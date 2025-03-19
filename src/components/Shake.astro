@@ -1,0 +1,56 @@
+---
+// Shake.astro
+// Wrap any content that should have a shake effect (elements with the "shake" class)
+// inside this component.
+---
+
+<div id="shake-container">
+  <slot />
+</div>
+
+<script type="module">
+  // Wait for the DOM to be fully loaded.
+  document.addEventListener("DOMContentLoaded", () => {
+    let shakeStartTime = Date.now();
+    let shakeDur = Math.random() * 1000 + 500;
+    let shakeSX = 0,
+      shakeSY = 0;
+    let shakeTX = Math.random() * 10 - 5,
+      shakeTY = Math.random() * 10 - 5;
+
+    function updateShake() {
+      // Query the container for elements with the "shake" class.
+      const container = document.getElementById("shake-container");
+      if (!container) return;
+      const els = container.querySelectorAll(".shake");
+      if (!els.length) return;
+
+      const now = Date.now();
+      if (now >= shakeStartTime + shakeDur) {
+        els.forEach((el) => {
+          el.style.transform = `translate(${shakeTX}px, ${shakeTY}px)`;
+        });
+        shakeSX = shakeTX;
+        shakeSY = shakeTY;
+        shakeTX = Math.random() * 10 - 5;
+        shakeTY = Math.random() * 10 - 5;
+        shakeDur = Math.random() * 1000 + 500;
+        shakeStartTime = now;
+      } else {
+        const prog = (now - shakeStartTime) / shakeDur;
+        const curX = shakeSX + (shakeTX - shakeSX) * prog;
+        const curY = shakeSY + (shakeTY - shakeSY) * prog;
+        els.forEach((el) => {
+          el.style.transform = `translate(${curX}px, ${curY}px)`;
+        });
+      }
+    }
+
+    function shakeLoop() {
+      updateShake();
+      requestAnimationFrame(shakeLoop);
+    }
+
+    shakeLoop();
+  });
+</script>

@@ -1,0 +1,140 @@
+
+
+/* Global page style */
+body {
+    background: black;
+    color: #33FF00;
+    font-family: 'Courier New', Courier, monospace;
+    margin: 0;
+    overflow: hidden;
+}
+
+.console-text {
+    font-family: 'VT323', monospace;
+    font-size: x-large;
+}
+
+/* Fullscreen canvas for the starfield and meteors */
+#starfield {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: -1;
+}
+
+/* Glitch effect for the title */
+.glitch {
+    position: relative;
+    display: inline-block;
+    font-size: 3rem;
+    font-weight: bold;
+}
+
+.glitch::before,
+.glitch::after {
+    content: attr(data-text);
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    overflow: hidden;
+}
+
+.glitch::before {
+    left: 2px;
+    text-shadow: -2px 0 red;
+    animation: glitch1 2s infinite linear alternate-reverse;
+}
+
+.glitch::after {
+    left: -2px;
+    text-shadow: -2px 0 blue;
+    animation: glitch2 2s infinite linear alternate-reverse;
+}
+
+@keyframes glitch1 {
+    0% {
+        clip: rect(44px, 9999px, 56px, 0);
+    }
+
+    20% {
+        clip: rect(12px, 9999px, 80px, 0);
+    }
+
+    40% {
+        clip: rect(20px, 9999px, 40px, 0);
+    }
+
+    60% {
+        clip: rect(50px, 9999px, 70px, 0);
+    }
+
+    80% {
+        clip: rect(30px, 9999px, 60px, 0);
+    }
+
+    100% {
+        clip: rect(44px, 9999px, 56px, 0);
+    }
+}
+
+@keyframes glitch2 {
+    0% {
+        clip: rect(24px, 9999px, 36px, 0);
+    }
+
+    20% {
+        clip: rect(50px, 9999px, 80px, 0);
+    }
+
+    40% {
+        clip: rect(10px, 9999px, 40px, 0);
+    }
+
+    60% {
+        clip: rect(30px, 9999px, 50px, 0);
+    }
+
+    80% {
+        clip: rect(60px, 9999px, 90px, 0);
+    }
+
+    100% {
+        clip: rect(24px, 9999px, 36px, 0);
+    }
+}
+
+/* Blinking cursor effect */
+.cursor::after {
+    content: '|';
+    animation: blink 1s step-start infinite;
+}
+
+@keyframes blink {
+    50% {
+        opacity: 0;
+    }
+}
+
+/* Remove static CSS shake (random shake is applied via JavaScript) */
+.shake {
+    transform: translate(0, 0);
+}
+
+@keyframes bob {
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-5px);
+    }
+}
+
+.bobbing {
+    animation: bob 2s infinite ease-in-out;
+}

@@ -1,0 +1,61 @@
+---
+// Flicker.astro
+// Wrap any content that should have a flicker effect (elements with class "flicker")
+// inside this component
+---
+
+<div id="flicker-container">
+  <slot />
+</div>
+
+<script type="module">
+  let flickerEls = document.querySelectorAll(".flicker");
+  let flickerState = "idle";
+  let flickerNext = Date.now() + Math.random() * 5000;
+  let flickerStart = 0,
+    flickerDur = 0,
+    flickerUpDur = 0,
+    tOp = 1;
+
+  function updateFlicker() {
+    // Re-select in case the DOM has updated
+    flickerEls = document.querySelectorAll(".flicker");
+    const now = Date.now();
+    if (flickerState === "idle") {
+      if (now >= flickerNext) {
+        flickerState = "flickerDown";
+        flickerStart = now;
+        flickerDur = Math.random() * 300 + 300;
+        tOp = Math.random() * 0.4 + 0.4;
+      }
+    } else if (flickerState === "flickerDown") {
+      let prog = (now - flickerStart) / flickerDur;
+      if (prog >= 1) {
+        flickerEls.forEach((el) => (el.style.opacity = tOp));
+        flickerState = "flickerUp";
+        flickerStart = now;
+        flickerUpDur = Math.random() * 300 + 300;
+      } else {
+        const op = 1 - (1 - tOp) * prog;
+        flickerEls.forEach((el) => (el.style.opacity = op));
+      }
+    } else if (flickerState === "flickerUp") {
+      let prog = (now - flickerStart) / flickerUpDur;
+      if (prog >= 1) {
+        flickerEls.forEach((el) => (el.style.opacity = 1));
+        flickerState = "idle";
+        flickerNext = now + Math.random() * 5000;
+      } else {
+        const op = tOp + (1 - tOp) * prog;
+        flickerEls.forEach((el) => (el.style.opacity = op));
+      }
+    }
+  }
+
+  function flickerLoop() {
+    updateFlicker();
+    requestAnimationFrame(flickerLoop);
+  }
+
+  flickerLoop();
+</script>
