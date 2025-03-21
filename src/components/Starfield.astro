@@ -1,57 +1,16 @@
 ---
-/*
-Starfield.astro
-Renders a full-screen canvas with a starfield animation and a toggle button.
-In “active” mode stars animate with twinkling and meteors,
-in “drawing” mode stars remain fixed while their brightness updates.
-Usage: <Starfield />
-*/
+// Starfield.astro
+// Renders a full-screen canvas with an animated starfield (active mode).
+// It also sets up a global starfieldState used by drawing mode.
 ---
 
 <style>
   #starfield {
     display: block;
   }
-  @keyframes bobbing {
-    0%,
-    100% {
-      transform: translateY(0);
-    }
-    50% {
-      transform: translateY(-5px);
-    }
-  }
-  #toggleStarfield {
-    position: fixed;
-    top: 10px;
-    right: 10px;
-    z-index: 1000;
-    padding: 10px 20px;
-    font-size: 16px;
-    background-color: #000;
-    color: #33ff00;
-    border: 2px solid #33ff00;
-    border-radius: 4px;
-    cursor: pointer;
-    animation: bobbing 2s infinite;
-  }
-  #controls-draw {
-    position: fixed;
-    bottom: 2rem;
-    right: 2rem;
-    color: #33ff00;
-    font-family: monospace;
-    font-size: 1rem;
-    opacity: 0;
-    transition: opacity 0.5s;
-    animation: bobbing 2s infinite;
-    z-index: 1000;
-  }
 </style>
 
 <canvas id="starfield"></canvas>
-<button id="toggleStarfield">Draw Constellations</button>
-<div id="controls-draw"></div>
 
 <script type="module">
   const canvas = document.getElementById("starfield");
@@ -59,54 +18,20 @@ Usage: <Starfield />
   // Disable image smoothing for a pixelated look.
   ctx.imageSmoothingEnabled = false;
 
-  const toggleButton = document.getElementById("toggleStarfield");
-  const controlsDraw = document.getElementById("controls-draw");
-
-  let starfieldActive = true; // true = active mode; false = drawing mode
-  window.starfieldPaused = false;
-
-  const externalSelectors = {
-    centerText: document.querySelector(".text-center"),
-    githubContainer: document.getElementById("github-container"),
-  };
-
-  // --- Offscreen Star Cache for Pixelated Stars ---
-  // Instead of a glowing gradient, we draw a small white square.
+  // Create an offscreen canvas (cache) for drawing pixelated stars.
   const starCache = document.createElement("canvas");
   const starCtx = starCache.getContext("2d");
-  const starCacheSize = 4; // small canvas for a pixel look
+  const starCacheSize = 4;
   starCache.width = starCacheSize;
   starCache.height = starCacheSize;
   starCtx.fillStyle = "#fff";
   starCtx.fillRect(0, 0, starCacheSize, starCacheSize);
 
-  // Scaling factor to convert star radius to drawn size.
-  // Lower value yields smaller stars.
   const scaleFactor = 2;
-
-  // --- Star / Meteor / Lines Data ---
   const numStars = 200;
   let stars = [];
   let meteors = [];
   let permanentLines = [];
-  let lineActive = false;
-  const lineStart = { x: 0, y: 0 },
-    lineEnd = { x: 0, y: 0 };
-  let lineStartStarIndex = null;
-  let currentHover = null;
-
-  // --- Animation IDs ---
-  let activeLoopId = null;
-  let staticLoopId = null;
-
-  // --- Init & Resize ---
-  function resizeCanvas() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    initStars();
-  }
-  window.addEventListener("resize", resizeCanvas);
-  resizeCanvas();
 
   function initStars() {
     stars = [];
@@ -114,8 +39,8 @@ Usage: <Starfield />
       stars.push({
         x: Math.random() * canvas.width,
         y: Math.random() * canvas.height,
-        r: Math.random() * 1.5, // base radius (will be scaled)
-        s: Math.random() * 0.5 + 0.2, // speed
+        r: Math.random() * 1.5,
+        s: Math.random() * 0.5 + 0.2,
         alpha: Math.random() * 0.5 + 0.5,
         twinkleSpeed: Math.random() * 0.02 + 0.005,
         twinkleDirection: Math.random() < 0.5 ? 1 : -1,
@@ -124,37 +49,29 @@ Usage: <Starfield />
     }
   }
 
-  // --- Helpers ---
-  function isStarConnected(index) {
-    return permanentLines.some(
-      (l) => l.startIndex === index || l.endIndex === index
-    );
+  function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    initStars();
   }
+  window.addEventListener("resize", resizeCanvas);
+  resizeCanvas();
 
-  function spawnMeteor() {
-    const type = Math.random() < 0.5 ? "rect" : "line";
-    const x = Math.random() * canvas.width,
-      y = Math.random() * canvas.height;
-    const angle = ((Math.random() * 50 + 20) * Math.PI) / 180;
-    const spd = Math.random() * 7 + 3;
-    return {
-      x,
-      y,
-      angle,
-      dx: spd * Math.cos(angle),
-      dy: spd * Math.sin(angle),
-      type,
-      width: type === "rect" ? Math.random() * 6 + 2 : 0,
-      height: type === "rect" ? Math.random() * 6 + 2 : 0,
-      length: type === "line" ? Math.random() * 20 + 10 : 0,
-    };
-  }
+  // Create a global state object for sharing with drawing mode.
+  window.starfieldState = {
+    stars, // reference to stars array
+    permanentLines, // reference to permanentLines array
+    lineActive: false, // is an active (in‑progress) line being drawn?
+    lineStart: { x: 0, y: 0 },
+    lineEnd: { x: 0, y: 0 },
+    lineStartStarIndex: null,
+    currentHover: null,
+  };
 
-  // --- Active Mode ---
+  // --- Active Mode (animation) ---
   function updateActiveMode() {
-    // If two stars are connected by a line, unify their speed.
-    for (let j = 0; j < permanentLines.length; j++) {
-      const line = permanentLines[j];
+    // Unify speeds for stars connected by permanent lines.
+    for (let line of permanentLines) {
       const s1 = stars[line.startIndex];
       const s2 = stars[line.endIndex];
       if (s1 && s2) {
@@ -163,23 +80,18 @@ Usage: <Starfield />
         s2.s = avgSpeed;
       }
     }
-
-    const cw = canvas.width,
-      ch = canvas.height;
     ctx.fillStyle = "black";
-    ctx.fillRect(0, 0, cw, ch);
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Update & draw stars using the cached pixel image
+    // Update and draw stars.
     for (let i = 0; i < stars.length; i++) {
       const star = stars[i];
-      // Update twinkle
       star.alpha += star.twinkleSpeed * star.twinkleDirection;
       if (star.alpha >= 1 || star.alpha <= 0.5) {
         star.twinkleDirection *= -1;
         star.alpha = Math.max(0.5, Math.min(1, star.alpha));
       }
       ctx.globalAlpha = star.alpha;
-      // Draw star as a scaled-up pixel
       const drawSize = star.r * scaleFactor * 2;
       ctx.drawImage(
         starCache,
@@ -192,18 +104,21 @@ Usage: <Starfield />
         drawSize,
         drawSize
       );
-      // Move star left and recycle if offscreen and not connected
+      // Move star left and recycle if offscreen and not connected.
       star.x -= star.s;
       star.offscreen = star.x + star.r < 0;
-      if (star.offscreen && !isStarConnected(i)) {
-        star.x = cw;
-        star.y = Math.random() * ch;
+      if (
+        star.offscreen &&
+        !permanentLines.some((l) => l.startIndex === i || l.endIndex === i)
+      ) {
+        star.x = canvas.width;
+        star.y = Math.random() * canvas.height;
         star.offscreen = false;
       }
     }
     ctx.globalAlpha = 1;
 
-    // Meteors
+    // Meteors.
     if (Math.random() < 0.005) meteors.push(spawnMeteor());
     for (let m = meteors.length - 1; m >= 0; m--) {
       const meteor = meteors[m];
@@ -223,13 +138,18 @@ Usage: <Starfield />
         );
         ctx.stroke();
       }
-      if (meteor.x < 0 || meteor.x > cw || meteor.y < 0 || meteor.y > ch)
+      if (
+        meteor.x < 0 ||
+        meteor.x > canvas.width ||
+        meteor.y < 0 ||
+        meteor.y > canvas.height
+      ) {
         meteors.splice(m, 1);
+      }
     }
 
-    // Permanent lines
-    for (let j = 0; j < permanentLines.length; j++) {
-      const line = permanentLines[j];
+    // Draw permanent constellation lines.
+    for (let line of permanentLines) {
       const s1 = stars[line.startIndex],
         s2 = stars[line.endIndex];
       const avgAlpha = (s1.alpha + s2.alpha) / 2;
@@ -243,33 +163,74 @@ Usage: <Starfield />
     }
     ctx.globalAlpha = 1;
 
-    // Remove lines if both connected stars are offscreen
+    // Remove lines if both connected stars are offscreen.
     for (let l = permanentLines.length - 1; l >= 0; l--) {
       const { startIndex, endIndex } = permanentLines[l];
       if (
         stars[startIndex].x + stars[startIndex].r <= 0 &&
         stars[endIndex].x + stars[endIndex].r <= 0
-      )
+      ) {
         permanentLines.splice(l, 1);
+      }
     }
   }
 
-  // --- Drawing Mode ---
-  function updateStaticMode() {
-    const cw = canvas.width,
-      ch = canvas.height;
-    ctx.fillStyle = "black";
-    ctx.fillRect(0, 0, cw, ch);
+  function spawnMeteor() {
+    const type = Math.random() < 0.5 ? "rect" : "line";
+    const x = Math.random() * canvas.width;
+    const y = Math.random() * canvas.height;
+    const angle = ((Math.random() * 50 + 20) * Math.PI) / 180;
+    const spd = Math.random() * 7 + 3;
+    return {
+      x,
+      y,
+      angle,
+      dx: spd * Math.cos(angle),
+      dy: spd * Math.sin(angle),
+      type,
+      width: type === "rect" ? Math.random() * 6 + 2 : 0,
+      height: type === "rect" ? Math.random() * 6 + 2 : 0,
+      length: type === "line" ? Math.random() * 20 + 10 : 0,
+    };
+  }
 
-    // Draw stars using the pixelated offscreen cache; use squared distance for hover checks
+  // Active animation loop.
+  let activeLoopId = null;
+  function activeLoop() {
+    updateActiveMode();
+    activeLoopId = requestAnimationFrame(activeLoop);
+  }
+  function startActiveLoop() {
+    if (!activeLoopId) activeLoop();
+  }
+  function stopActiveLoop() {
+    if (activeLoopId) {
+      cancelAnimationFrame(activeLoopId);
+      activeLoopId = null;
+    }
+  }
+  startActiveLoop();
+
+  // --- Static Mode (drawing mode) ---
+  // In static mode the stars remain fixed (no position updates) and the active drawing line is rendered.
+  let staticLoopId = null;
+  function updateStaticMode() {
+    ctx.fillStyle = "black";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw stars with hover detection.
     for (let i = 0; i < stars.length; i++) {
       const star = stars[i];
       let hovered = false;
-      if (currentHover) {
-        const dx = star.x - currentHover.x,
-          dy = star.y - currentHover.y;
-        if (dx * dx + dy * dy < 400) hovered = true; // 20² = 400
+      if (window.starfieldState.currentHover) {
+        const dx = star.x - window.starfieldState.currentHover.x;
+        const dy = star.y - window.starfieldState.currentHover.y;
+        if (dx * dx + dy * dy < 400) {
+          // within 20px radius
+          hovered = true;
+        }
       }
+      // Update twinkle if not hovered; if hovered, set alpha to 1.
       if (!hovered) {
         star.alpha += star.twinkleSpeed * star.twinkleDirection;
         if (star.alpha >= 1 || star.alpha <= 0.5) {
@@ -280,6 +241,7 @@ Usage: <Starfield />
         star.alpha = 1;
       }
       ctx.globalAlpha = star.alpha;
+      // Increase star size on hover.
       const effectiveRadius = hovered ? star.r * 3 : star.r;
       const drawSize = effectiveRadius * scaleFactor * 2;
       ctx.drawImage(
@@ -296,12 +258,11 @@ Usage: <Starfield />
     }
     ctx.globalAlpha = 1;
 
-    // Permanent lines (without extra effects)
-    for (let j = 0; j < permanentLines.length; j++) {
-      const line = permanentLines[j];
+    // Draw permanent lines.
+    for (let line of permanentLines) {
       const s1 = stars[line.startIndex],
-        s2 = stars[line.endIndex],
-        avgAlpha = (s1.alpha + s2.alpha) / 2;
+        s2 = stars[line.endIndex];
+      const avgAlpha = (s1.alpha + s2.alpha) / 2;
       ctx.globalAlpha = avgAlpha;
       ctx.strokeStyle = "white";
       ctx.lineWidth = 2;
@@ -312,38 +273,29 @@ Usage: <Starfield />
     }
     ctx.globalAlpha = 1;
 
-    // Active drawing line
-    if (lineActive) {
+    // Draw the active drawing line, if any.
+    if (window.starfieldState.lineActive) {
       ctx.strokeStyle = "white";
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(lineStart.x, lineStart.y);
-      ctx.lineTo(lineEnd.x, lineEnd.y);
+      ctx.moveTo(
+        window.starfieldState.lineStart.x,
+        window.starfieldState.lineStart.y
+      );
+      ctx.lineTo(
+        window.starfieldState.lineEnd.x,
+        window.starfieldState.lineEnd.y
+      );
       ctx.stroke();
     }
   }
 
-  function activeLoop() {
-    updateActiveMode();
-    activeLoopId = requestAnimationFrame(activeLoop);
-  }
   function staticLoop() {
     updateStaticMode();
     staticLoopId = requestAnimationFrame(staticLoop);
   }
-  function startActiveLoop() {
-    stopStaticLoop();
-    if (!activeLoopId) activeLoop();
-  }
   function startStaticLoop() {
-    stopActiveLoop();
     if (!staticLoopId) staticLoop();
-  }
-  function stopActiveLoop() {
-    if (activeLoopId) {
-      cancelAnimationFrame(activeLoopId);
-      activeLoopId = null;
-    }
   }
   function stopStaticLoop() {
     if (staticLoopId) {
@@ -351,98 +303,9 @@ Usage: <Starfield />
       staticLoopId = null;
     }
   }
-
-  // --- Toggle ---
-  toggleButton.addEventListener("click", () => {
-    if (starfieldActive) {
-      stopActiveLoop();
-      startStaticLoop();
-      toggleButton.textContent = "Stop drawing";
-      window.starfieldPaused = true;
-      if (externalSelectors.centerText) {
-        externalSelectors.centerText.style.transition = "opacity 0.2s";
-        externalSelectors.centerText.style.opacity = "0";
-      }
-      if (externalSelectors.githubContainer) {
-        externalSelectors.githubContainer.style.transition = "opacity 0.2s";
-        externalSelectors.githubContainer.style.opacity = "0";
-      }
-      if (controlsDraw) {
-        controlsDraw.innerHTML =
-          "Click & drag on a star to create a line.<br>Drag the line to another star to connect them.";
-        controlsDraw.style.opacity = "1";
-      }
-    } else {
-      stopStaticLoop();
-      startActiveLoop();
-      toggleButton.textContent = "Draw Constellations";
-      window.starfieldPaused = false;
-      if (externalSelectors.centerText) {
-        externalSelectors.centerText.style.transition = "opacity 0.5s";
-        externalSelectors.centerText.style.opacity = "1";
-      }
-      if (externalSelectors.githubContainer) {
-        externalSelectors.githubContainer.style.transition = "opacity 0.5s";
-        externalSelectors.githubContainer.style.opacity = "1";
-      }
-      if (controlsDraw) controlsDraw.style.opacity = "0";
-    }
-    starfieldActive = !starfieldActive;
-  });
-
-  // --- Drawing Mode Mouse Events ---
-  window.addEventListener("mousemove", (e) => {
-    if (!window.starfieldPaused) return;
-    const rect = canvas.getBoundingClientRect();
-    currentHover = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-    if (lineActive) {
-      lineEnd.x = currentHover.x;
-      lineEnd.y = currentHover.y;
-    }
-  });
-  window.addEventListener("mouseout", () => {
-    if (window.starfieldPaused) currentHover = null;
-  });
-  window.addEventListener("mousedown", (e) => {
-    if (!window.starfieldPaused) return;
-    const { left, top } = canvas.getBoundingClientRect();
-    const clickX = e.clientX - left,
-      clickY = e.clientY - top;
-    for (let i = 0; i < stars.length; i++) {
-      if ((stars[i].x - clickX) ** 2 + (stars[i].y - clickY) ** 2 < 400) {
-        lineActive = true;
-        lineStart.x = stars[i].x;
-        lineStart.y = stars[i].y;
-        lineEnd.x = clickX;
-        lineEnd.y = clickY;
-        lineStartStarIndex = i;
-        break;
-      }
-    }
-  });
-  window.addEventListener("mouseup", (e) => {
-    if (!window.starfieldPaused || !lineActive) return;
-    const { left, top } = canvas.getBoundingClientRect();
-    const releaseX = e.clientX - left,
-      releaseY = e.clientY - top;
-    let targetStarIndex = null;
-    for (let i = 0; i < stars.length; i++) {
-      if (i === lineStartStarIndex) continue;
-      if ((stars[i].x - releaseX) ** 2 + (stars[i].y - releaseY) ** 2 < 400) {
-        targetStarIndex = i;
-        break;
-      }
-    }
-    if (targetStarIndex !== null) {
-      permanentLines.push({
-        startIndex: lineStartStarIndex,
-        endIndex: targetStarIndex,
-      });
-    }
-    lineActive = false;
-    lineStartStarIndex = null;
-  });
-
-  // Start in active mode
-  startActiveLoop();
+  // Expose loop controls.
+  window.startActiveLoop = startActiveLoop;
+  window.stopActiveLoop = stopActiveLoop;
+  window.startStaticLoop = startStaticLoop;
+  window.stopStaticLoop = stopStaticLoop;
 </script>

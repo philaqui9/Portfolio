@@ -1,0 +1,428 @@
+---
+// RocketGame.astro
+// This component holds the client-side game logic.
+---
+
+<script type="module">
+  console.log("RocketGame component loaded");
+
+  // Cache frequently used DOM elements.
+  const rocket = document.getElementById("rocket");
+  const ctrl = document.getElementById("controls");
+  const toggleButton = document.getElementById("toggleStarfield"); // Assumed rendered elsewhere
+  const textCenter = document.querySelector(".text-center");
+  const githubContainer = document.getElementById("github-container");
+  const linkedinContainer = document.getElementById("linkedin-container");
+  const resumeContainer = document.getElementById("resume-container");
+
+  // Helper for fading an element.
+  function fade(element, opacity, duration = 0.5) {
+    if (element) {
+      element.style.transition = `opacity ${duration}s`;
+      element.style.opacity = opacity;
+    }
+  }
+
+  // Global UI state.
+  let uiHidden = false;
+
+  // Constants for the intro animation.
+  const introDelay = 1000,
+    introDur = 2000,
+    iX = -100,
+    iY = window.innerHeight / 2,
+    tX = window.innerWidth / 5,
+    tY = window.innerHeight / 2;
+
+  // Rocket state.
+  let posX = iX,
+    posY = iY,
+    spd = 3,
+    bAmp = 5,
+    bPer = 2000;
+  let keys = { up: false, left: false, down: false, right: false };
+  let currentAngle = Math.atan2(tY - iY, tX - iX) * (180 / Math.PI) + 90;
+  let startTime = performance.now();
+  let rocketMoved = false;
+  let introCompleted = false;
+  let currentDisplayY = posY;
+  let bullets = [];
+  const bulletSpeed = 10;
+  let currentTarget = null;
+  let score = 0;
+  let gameEnded = false;
+
+  // Animation variables for drawing mode.
+  let reverseStartTime = null;
+  const reverseDur = 2000; // Duration for reverse (fly-away) animation.
+  let flyIn = false;
+  let flyInStartTime = null,
+    flyInStartX = 0,
+    flyInStartY = 0;
+  const flyInDur = 2000; // Duration for fly‑in animation.
+
+  // --- Target functions ---
+  function spawnTarget() {
+    if (currentTarget) return;
+    const ctrlRect = ctrl ? ctrl.getBoundingClientRect() : null;
+    const rocketRect = rocket.getBoundingClientRect();
+    let left, top;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      left = Math.random() * (window.innerWidth - 32);
+      top = Math.random() * (window.innerHeight - 32);
+      if (
+        ctrlRect &&
+        left < ctrlRect.right &&
+        left + 32 > ctrlRect.left &&
+        top < ctrlRect.bottom &&
+        top + 32 > ctrlRect.top
+      )
+        continue;
+      if (
+        left < rocketRect.right &&
+        left + 32 > rocketRect.left &&
+        top < rocketRect.bottom &&
+        top + 32 > rocketRect.top
+      )
+        continue;
+      break;
+    }
+    const tar = document.createElement("div");
+    tar.classList.add(
+      "absolute",
+      "w-8",
+      "h-8",
+      "flex",
+      "items-center",
+      "justify-center",
+      "rounded-full",
+      "bg-red-500",
+      "border-4",
+      "border-white"
+    );
+    tar.style.left = `${left}px`;
+    tar.style.top = `${top}px`;
+    document.body.appendChild(tar);
+    currentTarget = tar;
+    tar.removalTimeout = setTimeout(removeTarget, 5000);
+  }
+
+  function removeTarget() {
+    if (currentTarget) {
+      clearTimeout(currentTarget.removalTimeout);
+      currentTarget.remove();
+      currentTarget = null;
+    }
+  }
+
+  // --- End Game Functionality ---
+  function endGame() {
+    if (currentTarget) {
+      clearTimeout(currentTarget.removalTimeout);
+      currentTarget.remove();
+      currentTarget = null;
+    }
+    fade(ctrl, "0", 0.5);
+    posX = tX;
+    posY = tY;
+    rocketMoved = false;
+    score = 0;
+    if (ctrl) ctrl.innerHTML = "Use the arrow keys to move the rocket.";
+    while (bullets.length) {
+      bullets[0].element.remove();
+      bullets.shift();
+    }
+    gameEnded = true;
+    currentAngle = 90;
+    fade(textCenter, "1", 0.5);
+    fade(githubContainer, "1", 0.5);
+    fade(linkedinContainer, "1", 0.5);
+    fade(resumeContainer, "1", 0.5);
+    fade(toggleButton, "1", 0.5);
+    uiHidden = false;
+    setTimeout(() => {
+      gameEnded = false;
+      rocketMoved = false;
+      startTime = performance.now();
+      fade(ctrl, "1", 0.5);
+    }, 1000);
+  }
+
+  // --- Rocket Update Loop ---
+  function updateRocket() {
+    const now = performance.now();
+    const winW = window.innerWidth,
+      winH = window.innerHeight;
+
+    // Update toggle button appearance based on drawing mode.
+    if (toggleButton) {
+      if (window.starfieldPaused) toggleButton.classList.add("wireframe-bob");
+      else toggleButton.classList.remove("wireframe-bob");
+    }
+
+    // Drawing mode: perform reverse (fly-away) animation.
+    if (window.starfieldPaused) {
+      fade(ctrl, "0", 0.5);
+      if (reverseStartTime === null) reverseStartTime = now;
+      const prog = Math.min((now - reverseStartTime) / reverseDur, 1);
+      posX = tX + (iX - tX) * prog;
+      posY = tY + (iY - tY) * prog;
+      currentAngle = Math.atan2(iY - tY, iX - tX) * (180 / Math.PI) + 90;
+      rocket.style.left = posX + "px";
+      rocket.style.top = posY + "px";
+      rocket.style.transform = `translate(-50%, -50%) rotate(${currentAngle}deg)`;
+      return;
+    } else {
+      if (reverseStartTime !== null) {
+        flyIn = true;
+        flyInStartTime = now;
+        flyInStartX = posX;
+        flyInStartY = posY;
+        reverseStartTime = null;
+        fade(ctrl, "0", 0.5);
+      }
+      if (flyIn) {
+        const flyProg = Math.min((now - flyInStartTime) / flyInDur, 1);
+        posX = flyInStartX + (tX - flyInStartX) * flyProg;
+        posY = flyInStartY + (tY - flyInStartY) * flyProg;
+        currentAngle = Math.atan2(tY - posY, tX - posX) * (180 / Math.PI) + 90;
+        rocket.style.left = posX + "px";
+        rocket.style.top = posY + "px";
+        rocket.style.transform = `translate(-50%, -50%) rotate(${currentAngle}deg)`;
+        if (flyProg >= 1) {
+          flyIn = false;
+          posX = tX;
+          posY = tY;
+          fade(ctrl, "1", 0.5);
+        }
+        return;
+      }
+    }
+
+    const elapsed = now - startTime;
+    let dY = posY;
+
+    // Intro animation.
+    if (!introCompleted) {
+      if (elapsed < introDelay) {
+        posX = iX;
+        posY = iY;
+        currentAngle = Math.atan2(tY - iY, tX - iX) * (180 / Math.PI) + 90;
+      } else if (elapsed < introDelay + introDur) {
+        const prog = (elapsed - introDelay) / introDur;
+        posX = iX + prog * (tX - iX);
+        posY = iY + prog * (tY - iY);
+        currentAngle = Math.atan2(tY - iY, tX - iX) * (180 / Math.PI) + 90;
+      } else {
+        introCompleted = true;
+        posX = tX;
+        posY = tY;
+        fade(ctrl, "0", 0);
+      }
+    } else {
+      let dx = 0,
+        dy = 0;
+      if (keys.up) dy -= 1;
+      if (keys.left) dx -= 1;
+      if (keys.down) dy += 1;
+      if (keys.right) dx += 1;
+      if (dx || dy) {
+        const len = Math.sqrt(dx * dx + dy * dy);
+        dx /= len;
+        dy /= len;
+        posX += dx * spd;
+        posY += dy * spd;
+        currentAngle = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
+        rocketMoved = true;
+        if (!uiHidden) {
+          fade(textCenter, "0", 0.5);
+          fade(githubContainer, "0", 0.5);
+          fade(toggleButton, "0", 0.5);
+          uiHidden = true;
+        }
+      } else {
+        const phase = (now % bPer) / bPer;
+        const offset = bAmp * Math.sin(phase * 2 * Math.PI);
+        dY = posY + offset;
+      }
+    }
+
+    if (rocketMoved) {
+      posX = Math.max(0, Math.min(winW, posX));
+      posY = Math.max(0, Math.min(winH, posY));
+    }
+
+    currentDisplayY = dY;
+    rocket.style.left = posX + "px";
+    rocket.style.top = dY + "px";
+    rocket.style.transform = `translate(-50%, -50%) rotate(${currentAngle}deg)`;
+
+    // Update bullets.
+    for (let i = bullets.length - 1; i >= 0; i--) {
+      const b = bullets[i];
+      b.x += b.vx;
+      b.y += b.vy;
+      b.element.style.left = b.x + "px";
+      b.element.style.top = b.y + "px";
+      if (b.x < 0 || b.x > winW || b.y < 0 || b.y > winH) {
+        b.element.remove();
+        bullets.splice(i, 1);
+      }
+    }
+
+    // Check bullet collisions with target.
+    if (currentTarget) {
+      const rect = currentTarget.getBoundingClientRect();
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        const b = bullets[i];
+        if (
+          b.x >= rect.left &&
+          b.x <= rect.right &&
+          b.y >= rect.top &&
+          b.y <= rect.bottom
+        ) {
+          if (!currentTarget.dataset.hit) {
+            currentTarget.dataset.hit = "true";
+            currentTarget.style.backgroundColor = "blue";
+            clearTimeout(currentTarget.removalTimeout);
+            b.element.remove();
+            bullets.splice(i, 1);
+            score++;
+            setTimeout(removeTarget, 500);
+          }
+          break;
+        }
+      }
+    }
+
+    // Update controls text when ready.
+    if (ctrl && introCompleted && !flyIn) {
+      let txt = "Use the arrow keys to move the rocket.";
+      if (rocketMoved)
+        txt += "\nPress 'Space' to shoot.\nPress 'Enter' to end the game.";
+      if (score > 0) txt += "\nScore: " + score;
+      ctrl.innerHTML = txt.replace(/\n/g, "<br>");
+      fade(ctrl, "1", 0.5);
+    }
+
+    if (rocketMoved && !gameEnded && !currentTarget) {
+      spawnTarget();
+    }
+  }
+
+  // --- Event Listeners ---
+  window.addEventListener("keydown", (e) => {
+    if (
+      !rocketMoved &&
+      !["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)
+    ) {
+      e.preventDefault();
+      return;
+    }
+    if (
+      ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key) &&
+      ctrl.innerHTML.includes("Use the arrow keys to move the rocket.")
+    ) {
+      rocketMoved = true;
+      fade(textCenter, "0", 0.5);
+      fade(githubContainer, "0", 0.5);
+      fade(linkedinContainer, "0", 0.5);
+      fade(resumeContainer, "0", 0.5);
+      fade(toggleButton, "0", 0.5);
+      uiHidden = true;
+    }
+    if (!introCompleted || flyIn || reverseStartTime !== null) {
+      e.preventDefault();
+      return;
+    }
+    switch (e.key) {
+      case "ArrowUp":
+        keys.up = true;
+        break;
+      case "ArrowLeft":
+        keys.left = true;
+        break;
+      case "ArrowDown":
+        keys.down = true;
+        break;
+      case "ArrowRight":
+        keys.right = true;
+        break;
+    }
+    if (e.key === "Enter") {
+      if (
+        ctrl.innerHTML.includes("Press 'Space' to shoot") ||
+        window.starfieldPaused
+      ) {
+        window.starfieldPaused = false;
+        endGame();
+      } else {
+        e.preventDefault();
+      }
+      return;
+    }
+    if (e.code === "Space") {
+      if (introCompleted && !gameEnded) {
+        const bulletEl = document.createElement("div");
+        bulletEl.style.position = "absolute";
+        bulletEl.style.width = "5px";
+        bulletEl.style.height = "5px";
+        bulletEl.style.backgroundColor = "#ff0000";
+        bulletEl.style.borderRadius = "50%";
+        document.body.appendChild(bulletEl);
+        const off = 20;
+        const rad = (currentAngle * Math.PI) / 180;
+        const bx = posX + Math.sin(rad) * off;
+        const by = posY - Math.cos(rad) * off;
+        bulletEl.style.left = bx + "px";
+        bulletEl.style.top = by + "px";
+        const vx = Math.sin(rad) * bulletSpeed;
+        const vy = -Math.cos(rad) * bulletSpeed;
+        bullets.push({ x: bx, y: by, vx, vy, element: bulletEl });
+      }
+    }
+  });
+
+  function disableKeysDuringAnimation(e) {
+    if (!introCompleted || flyIn || reverseStartTime !== null) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }
+
+  window.addEventListener("keydown", disableKeysDuringAnimation, true);
+  window.addEventListener("keyup", disableKeysDuringAnimation, true);
+  window.addEventListener("keyup", (e) => {
+    const arrowKeys = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
+    if (
+      ((!rocketMoved && !introCompleted) ||
+        gameEnded ||
+        flyIn ||
+        reverseStartTime !== null) &&
+      !arrowKeys.includes(e.key)
+    ) {
+      e.preventDefault();
+      return;
+    }
+    switch (e.key) {
+      case "ArrowUp":
+        keys.up = false;
+        break;
+      case "ArrowLeft":
+        keys.left = false;
+        break;
+      case "ArrowDown":
+        keys.down = false;
+        break;
+      case "ArrowRight":
+        keys.right = false;
+        break;
+    }
+  });
+
+  function rocketLoop() {
+    updateRocket();
+    requestAnimationFrame(rocketLoop);
+  }
+  rocketLoop();
+</script>

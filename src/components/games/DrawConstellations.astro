@@ -1,0 +1,181 @@
+---
+// DrawConstellations.astro
+// Renders the “Draw Constellations” toggle button and sets up mouse event handlers for drawing mode.
+// This component works in conjunction with Starfield.astro via window.starfieldState.
+---
+
+<style>
+  @keyframes bobbing {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-5px);
+    }
+  }
+  #toggleStarfield {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    z-index: 1000;
+    padding: 10px 20px;
+    font-size: 16px;
+    background-color: #000;
+    color: #33ff00;
+    border: 2px solid #33ff00;
+    border-radius: 4px;
+    cursor: pointer;
+    animation: bobbing 2s infinite;
+  }
+  #controls-draw {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    color: #33ff00;
+    font-family: monospace;
+    font-size: 1rem;
+    opacity: 0;
+    transition: opacity 0.5s;
+    animation: bobbing 2s infinite;
+    z-index: 1000;
+  }
+</style>
+
+<button id="toggleStarfield">Draw Constellations</button>
+<div id="controls-draw"></div>
+
+<script type="module">
+  const toggleButton = document.getElementById("toggleStarfield");
+  const controlsDraw = document.getElementById("controls-draw");
+  let drawingMode = false; // false: active mode; true: drawing mode
+
+  toggleButton.addEventListener("click", () => {
+    if (!drawingMode) {
+      // Switch to drawing mode.
+      window.stopActiveLoop();
+      window.startStaticLoop();
+      toggleButton.textContent = "Stop drawing";
+      window.starfieldPaused = true;
+      // Fade out external UI elements if they exist.
+      const centerText = document.querySelector(".text-center");
+      const githubContainer = document.getElementById("github-container");
+      const linkedinContainer = document.getElementById("linkedin-container");
+      const resumeContainer = document.getElementById("resume-container");
+      if (centerText) {
+        centerText.style.transition = "opacity 0.2s";
+        centerText.style.opacity = "0";
+      }
+      if (githubContainer) {
+        githubContainer.style.transition = "opacity 0.2s";
+        githubContainer.style.opacity = "0";
+      }
+      if (linkedinContainer) {
+        linkedinContainer.style.transition = "opacity 0.2s";
+        linkedinContainer.style.opacity = "0";
+      }
+      if (resumeContainer) {
+        resumeContainer.style.transition = "opacity 0.2s";
+        resumeContainer.style.opacity = "0";
+      }
+      controlsDraw.innerHTML =
+        "Click &amp; drag on a star to create a line.<br>Drag the line to another star to connect them.";
+      controlsDraw.style.opacity = "1";
+    } else {
+      // Switch back to active mode.
+      window.stopStaticLoop();
+      window.startActiveLoop();
+      toggleButton.textContent = "Draw Constellations";
+      window.starfieldPaused = false;
+      const centerText = document.querySelector(".text-center");
+      const githubContainer = document.getElementById("github-container");
+      const linkedinContainer = document.getElementById("linkedin-container");
+      const resumeContainer = document.getElementById("resume-container");
+      if (centerText) {
+        centerText.style.transition = "opacity 0.5s";
+        centerText.style.opacity = "1";
+      }
+      if (githubContainer) {
+        githubContainer.style.transition = "opacity 0.5s";
+        githubContainer.style.opacity = "1";
+      }
+      if (linkedinContainer) {
+        linkedinContainer.style.transition = "opacity 0.5s";
+        linkedinContainer.style.opacity = "1";
+      }
+      if (resumeContainer) {
+        resumeContainer.style.transition = "opacity 0.5s";
+        resumeContainer.style.opacity = "1";
+      }
+      controlsDraw.style.opacity = "0";
+    }
+    drawingMode = !drawingMode;
+  });
+
+  // --- Drawing Mode Mouse Events ---
+  window.addEventListener("mousemove", (e) => {
+    if (!window.starfieldPaused) return;
+    const canvas = document.getElementById("starfield");
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    window.starfieldState.currentHover = {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    };
+    if (window.starfieldState.lineActive) {
+      window.starfieldState.lineEnd.x = window.starfieldState.currentHover.x;
+      window.starfieldState.lineEnd.y = window.starfieldState.currentHover.y;
+    }
+  });
+  window.addEventListener("mouseout", () => {
+    if (window.starfieldPaused) window.starfieldState.currentHover = null;
+  });
+  window.addEventListener("mousedown", (e) => {
+    if (!window.starfieldPaused) return;
+    const canvas = document.getElementById("starfield");
+    if (!canvas) return;
+    const { left, top } = canvas.getBoundingClientRect();
+    const clickX = e.clientX - left;
+    const clickY = e.clientY - top;
+    const stars = window.starfieldState.stars;
+    if (!stars) return;
+    for (let i = 0; i < stars.length; i++) {
+      const star = stars[i];
+      // If within a 20px radius.
+      if ((star.x - clickX) ** 2 + (star.y - clickY) ** 2 < 400) {
+        window.starfieldState.lineActive = true;
+        window.starfieldState.lineStart = { x: star.x, y: star.y };
+        window.starfieldState.lineEnd = { x: clickX, y: clickY };
+        window.starfieldState.lineStartStarIndex = i;
+        break;
+      }
+    }
+  });
+  window.addEventListener("mouseup", (e) => {
+    if (!window.starfieldPaused || !window.starfieldState.lineActive) return;
+    const canvas = document.getElementById("starfield");
+    if (!canvas) return;
+    const { left, top } = canvas.getBoundingClientRect();
+    const releaseX = e.clientX - left;
+    const releaseY = e.clientY - top;
+    let targetStarIndex = null;
+    const stars = window.starfieldState.stars;
+    for (let i = 0; i < stars.length; i++) {
+      if (i === window.starfieldState.lineStartStarIndex) continue;
+      if ((stars[i].x - releaseX) ** 2 + (stars[i].y - releaseY) ** 2 < 400) {
+        targetStarIndex = i;
+        break;
+      }
+    }
+    if (targetStarIndex !== null) {
+      if (!window.starfieldState.permanentLines)
+        window.starfieldState.permanentLines = [];
+      window.starfieldState.permanentLines.push({
+        startIndex: window.starfieldState.lineStartStarIndex,
+        endIndex: targetStarIndex,
+      });
+    }
+    window.starfieldState.lineActive = false;
+    window.starfieldState.lineStartStarIndex = null;
+  });
+</script>
