@@ -50,6 +50,19 @@
   const controlsDraw = document.getElementById("controls-draw");
   let drawingMode = false; // false: active mode; true: drawing mode
 
+  // Utility function to compute distance from point p to line segment (v-w)
+  function pointToSegmentDistance(p, v, w) {
+    const l2 = (w.x - v.x) ** 2 + (w.y - v.y) ** 2;
+    if (l2 === 0) return Math.hypot(p.x - v.x, p.y - v.y);
+    let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
+    t = Math.max(0, Math.min(1, t));
+    const projection = {
+      x: v.x + t * (w.x - v.x),
+      y: v.y + t * (w.y - v.y),
+    };
+    return Math.hypot(p.x - projection.x, p.y - projection.y);
+  }
+
   toggleButton.addEventListener("click", () => {
     if (!drawingMode) {
       // Switch to drawing mode.
@@ -79,7 +92,7 @@
         resumeContainer.style.opacity = "0";
       }
       controlsDraw.innerHTML =
-        "Click &amp; drag on a star to create a line.<br>Drag the line to another star to connect them.";
+        "Click &amp; drag on a star to create a line.<br>Drag the line to another star to connect them.<br>Click on a line to remove it.";
       controlsDraw.style.opacity = "1";
     } else {
       // Switch back to active mode.
@@ -130,6 +143,7 @@
   window.addEventListener("mouseout", () => {
     if (window.starfieldPaused) window.starfieldState.currentHover = null;
   });
+
   window.addEventListener("mousedown", (e) => {
     if (!window.starfieldPaused) return;
     const canvas = document.getElementById("starfield");
@@ -138,19 +152,44 @@
     const clickX = e.clientX - left;
     const clickY = e.clientY - top;
     const stars = window.starfieldState.stars;
-    if (!stars) return;
-    for (let i = 0; i < stars.length; i++) {
-      const star = stars[i];
-      // If within a 20px radius.
-      if ((star.x - clickX) ** 2 + (star.y - clickY) ** 2 < 400) {
-        window.starfieldState.lineActive = true;
-        window.starfieldState.lineStart = { x: star.x, y: star.y };
-        window.starfieldState.lineEnd = { x: clickX, y: clickY };
-        window.starfieldState.lineStartStarIndex = i;
-        break;
+    let starClicked = false;
+
+    // Check if click is on a star (within 20px radius).
+    if (stars) {
+      for (let i = 0; i < stars.length; i++) {
+        const star = stars[i];
+        if ((star.x - clickX) ** 2 + (star.y - clickY) ** 2 < 400) {
+          starClicked = true;
+          window.starfieldState.lineActive = true;
+          window.starfieldState.lineStart = { x: star.x, y: star.y };
+          window.starfieldState.lineEnd = { x: clickX, y: clickY };
+          window.starfieldState.lineStartStarIndex = i;
+          break;
+        }
+      }
+    }
+    // If no star was clicked, check if the click is near a permanent line.
+    if (!starClicked) {
+      const tolerance = 10; // pixels
+      const lines = window.starfieldState.permanentLines || [];
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const s1 = window.starfieldState.stars[line.startIndex];
+        const s2 = window.starfieldState.stars[line.endIndex];
+        const distance = pointToSegmentDistance(
+          { x: clickX, y: clickY },
+          s1,
+          s2
+        );
+        if (distance <= tolerance) {
+          // Remove the line from the permanentLines array.
+          window.starfieldState.permanentLines.splice(i, 1);
+          break;
+        }
       }
     }
   });
+
   window.addEventListener("mouseup", (e) => {
     if (!window.starfieldPaused || !window.starfieldState.lineActive) return;
     const canvas = document.getElementById("starfield");

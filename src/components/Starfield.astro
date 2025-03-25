@@ -2,6 +2,7 @@
 // Starfield.astro
 // Renders a full-screen canvas with an animated starfield (active mode).
 // It also sets up a global starfieldState used by drawing mode.
+// Stars remain in the same position even if the window is moved or resized.
 ---
 
 <style>
@@ -52,10 +53,12 @@
   function resizeCanvas() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
-    initStars();
+    // Note: We do not call initStars() here so that the stars keep their positions.
   }
   window.addEventListener("resize", resizeCanvas);
+  // Set the canvas dimensions first, then initialize stars only once.
   resizeCanvas();
+  initStars();
 
   // Create a global state object for sharing with drawing mode.
   window.starfieldState = {

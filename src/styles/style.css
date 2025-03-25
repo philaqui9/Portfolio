@@ -138,3 +138,17 @@ body {
 .bobbing {
     animation: bob 2s infinite ease-in-out;
 }
+
+/* topleft-hover.css */
+#github-container,
+#linkedin-container,
+#resume-container {
+    transition: border-color 0.3s ease, color 0.3s ease;
+}
+
+#github-container:hover,
+#linkedin-container:hover,
+#resume-container:hover {
+    color: #3d692f;
+    border-color: #3d692f;
+}

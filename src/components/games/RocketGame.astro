@@ -1,6 +1,13 @@
 ---
 // RocketGame.astro
-// This component holds the client-side game logic.
+// This component holds the client‑side game logic using a game session.
+// Before a session starts, only arrow keys are allowed and the control text shows:
+//   "Use the arrow keys to move the rocket."
+// Once movement starts, a session begins and the control text displays:
+//   "Use the arrow keys to move the rocket.<br>Press 'Space' to shoot.<br>Press 'Enter' to end the game."
+// (If score > 0 it is appended.)
+// External UI elements (center text, GitHub, LinkedIn, resume, toggle button) are hidden during a session.
+// Pressing Enter during a session always ends the session, even if a drawn constellation is in the background.
 ---
 
 <script type="module">
@@ -9,13 +16,13 @@
   // Cache frequently used DOM elements.
   const rocket = document.getElementById("rocket");
   const ctrl = document.getElementById("controls");
-  const toggleButton = document.getElementById("toggleStarfield"); // Assumed rendered elsewhere
+  const toggleButton = document.getElementById("toggleStarfield"); // Rendered elsewhere.
   const textCenter = document.querySelector(".text-center");
   const githubContainer = document.getElementById("github-container");
   const linkedinContainer = document.getElementById("linkedin-container");
   const resumeContainer = document.getElementById("resume-container");
 
-  // Helper for fading an element.
+  // Helper: fade element.
   function fade(element, opacity, duration = 0.5) {
     if (element) {
       element.style.transition = `opacity ${duration}s`;
@@ -23,10 +30,13 @@
     }
   }
 
-  // Global UI state.
+  // --- Global Game Session State ---
+  let sessionActive = false; // True once the rocket moves.
   let uiHidden = false;
+  let rocketMoved = false;
+  let introCompleted = false; // Flag for completion of the intro animation.
 
-  // Constants for the intro animation.
+  // --- Constants for Intro & Fly‑in Animations ---
   const introDelay = 1000,
     introDur = 2000,
     iX = -100,
@@ -34,7 +44,7 @@
     tX = window.innerWidth / 5,
     tY = window.innerHeight / 2;
 
-  // Rocket state.
+  // --- Rocket State Variables ---
   let posX = iX,
     posY = iY,
     spd = 3,
@@ -43,25 +53,25 @@
   let keys = { up: false, left: false, down: false, right: false };
   let currentAngle = Math.atan2(tY - iY, tX - iX) * (180 / Math.PI) + 90;
   let startTime = performance.now();
-  let rocketMoved = false;
-  let introCompleted = false;
   let currentDisplayY = posY;
+
+  // --- Bullets, Score, and Target State ---
   let bullets = [];
   const bulletSpeed = 10;
-  let currentTarget = null;
   let score = 0;
+  let currentTarget = null;
   let gameEnded = false;
 
-  // Animation variables for drawing mode.
+  // --- Animation Variables for Reverse/Fly‑in (Drawing Mode) ---
   let reverseStartTime = null;
-  const reverseDur = 2000; // Duration for reverse (fly-away) animation.
+  const reverseDur = 2000;
   let flyIn = false;
   let flyInStartTime = null,
     flyInStartX = 0,
     flyInStartY = 0;
-  const flyInDur = 2000; // Duration for fly‑in animation.
+  const flyInDur = 2000;
 
-  // --- Target functions ---
+  // --- Target Functions ---
   function spawnTarget() {
     if (currentTarget) return;
     const ctrlRect = ctrl ? ctrl.getBoundingClientRect() : null;
@@ -126,14 +136,16 @@
     posX = tX;
     posY = tY;
     rocketMoved = false;
+    sessionActive = false;
     score = 0;
-    if (ctrl) ctrl.innerHTML = "Use the arrow keys to move the rocket.";
+    if (ctrl) ctrl.innerHTML = "";
     while (bullets.length) {
       bullets[0].element.remove();
       bullets.shift();
     }
     gameEnded = true;
     currentAngle = 90;
+    // Restore external UI.
     fade(textCenter, "1", 0.5);
     fade(githubContainer, "1", 0.5);
     fade(linkedinContainer, "1", 0.5);
@@ -144,7 +156,7 @@
       gameEnded = false;
       rocketMoved = false;
       startTime = performance.now();
-      fade(ctrl, "1", 0.5);
+      fade(ctrl, "0", 0); // Clear session controls.
     }, 1000);
   }
 
@@ -154,13 +166,13 @@
     const winW = window.innerWidth,
       winH = window.innerHeight;
 
-    // Update toggle button appearance based on drawing mode.
+    // Update toggle button appearance.
     if (toggleButton) {
       if (window.starfieldPaused) toggleButton.classList.add("wireframe-bob");
       else toggleButton.classList.remove("wireframe-bob");
     }
 
-    // Drawing mode: perform reverse (fly-away) animation.
+    // Handle reverse/fly‑in animations (drawing mode).
     if (window.starfieldPaused) {
       fade(ctrl, "0", 0.5);
       if (reverseStartTime === null) reverseStartTime = now;
@@ -220,6 +232,7 @@
         fade(ctrl, "0", 0);
       }
     } else {
+      // Process arrow key movement.
       let dx = 0,
         dy = 0;
       if (keys.up) dy -= 1;
@@ -234,13 +247,24 @@
         posY += dy * spd;
         currentAngle = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
         rocketMoved = true;
-        if (!uiHidden) {
+        // Start session on first arrow key movement.
+        if (!sessionActive) {
+          sessionActive = true;
+          // Hide external UI.
           fade(textCenter, "0", 0.5);
           fade(githubContainer, "0", 0.5);
+          fade(linkedinContainer, "0", 0.5);
+          fade(resumeContainer, "0", 0.5);
           fade(toggleButton, "0", 0.5);
-          uiHidden = true;
+          ctrl.innerHTML =
+            "Use the arrow keys to move the rocket.<br>Press 'Space' to shoot.<br>Press 'Enter' to end the game.<br>Score: 0";
         }
       } else {
+        // If no movement and session hasn't started, show default instructions.
+        if (!sessionActive) {
+          ctrl.innerHTML = "Use the arrow keys to move the rocket.";
+          fade(ctrl, "1", 0.5);
+        }
         const phase = (now % bPer) / bPer;
         const offset = bAmp * Math.sin(phase * 2 * Math.PI);
         dY = posY + offset;
@@ -270,8 +294,8 @@
       }
     }
 
-    // Check bullet collisions with target.
-    if (currentTarget) {
+    // Check bullet collisions with target (only during session).
+    if (sessionActive && currentTarget) {
       const rect = currentTarget.getBoundingClientRect();
       for (let i = bullets.length - 1; i >= 0; i--) {
         const b = bullets[i];
@@ -295,46 +319,66 @@
       }
     }
 
-    // Update controls text when ready.
+    // Update control text based on session.
     if (ctrl && introCompleted && !flyIn) {
-      let txt = "Use the arrow keys to move the rocket.";
-      if (rocketMoved)
-        txt += "\nPress 'Space' to shoot.\nPress 'Enter' to end the game.";
-      if (score > 0) txt += "\nScore: " + score;
-      ctrl.innerHTML = txt.replace(/\n/g, "<br>");
-      fade(ctrl, "1", 0.5);
+      if (sessionActive) {
+        let txt =
+          "Use the arrow keys to move the rocket.<br>Press 'Space' to shoot.<br>Press 'Enter' to end the game.";
+        if (score > 0) {
+          txt += `<br>Score: ${score}`;
+        }
+        ctrl.innerHTML = txt;
+        fade(ctrl, "1", 0.5);
+      } else {
+        ctrl.innerHTML = "Use the arrow keys to move the rocket.";
+        fade(ctrl, "1", 0.5);
+      }
     }
 
-    if (rocketMoved && !gameEnded && !currentTarget) {
+    // Spawn targets during an active session.
+    if (sessionActive && !gameEnded && !currentTarget) {
       spawnTarget();
     }
   }
 
-  // --- Event Listeners ---
-  window.addEventListener("keydown", (e) => {
+  // --- Key Handling ---
+
+  // Outside a session, allow only arrow keys.
+  function disableNonAllowedKeys(e) {
+    if (!sessionActive) {
+      const allowedKeys = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
+      if (!allowedKeys.includes(e.key)) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }
+  }
+  window.addEventListener("keydown", disableNonAllowedKeys, true);
+
+  // Disable keys during certain animations—but if a session is active and Enter is pressed, do not block it.
+  function disableKeysDuringAnimation(e) {
     if (
-      !rocketMoved &&
+      (!introCompleted || flyIn || reverseStartTime !== null) &&
+      !(sessionActive && e.key === "Enter")
+    ) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }
+  window.addEventListener("keydown", disableKeysDuringAnimation, true);
+  window.addEventListener("keyup", disableKeysDuringAnimation, true);
+
+  // Primary keydown listener.
+  window.addEventListener("keydown", (e) => {
+    // Outside a session, only arrow keys are accepted.
+    if (
+      !sessionActive &&
       !["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)
     ) {
       e.preventDefault();
       return;
     }
-    if (
-      ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key) &&
-      ctrl.innerHTML.includes("Use the arrow keys to move the rocket.")
-    ) {
-      rocketMoved = true;
-      fade(textCenter, "0", 0.5);
-      fade(githubContainer, "0", 0.5);
-      fade(linkedinContainer, "0", 0.5);
-      fade(resumeContainer, "0", 0.5);
-      fade(toggleButton, "0", 0.5);
-      uiHidden = true;
-    }
-    if (!introCompleted || flyIn || reverseStartTime !== null) {
-      e.preventDefault();
-      return;
-    }
+    // Process arrow keys.
     switch (e.key) {
       case "ArrowUp":
         keys.up = true;
@@ -349,20 +393,14 @@
         keys.right = true;
         break;
     }
-    if (e.key === "Enter") {
-      if (
-        ctrl.innerHTML.includes("Press 'Space' to shoot") ||
-        window.starfieldPaused
-      ) {
+    // In a session, allow Space and Enter.
+    if (sessionActive) {
+      if (e.key === "Enter") {
         window.starfieldPaused = false;
         endGame();
-      } else {
-        e.preventDefault();
+        return;
       }
-      return;
-    }
-    if (e.code === "Space") {
-      if (introCompleted && !gameEnded) {
+      if (e.code === "Space") {
         const bulletEl = document.createElement("div");
         bulletEl.style.position = "absolute";
         bulletEl.style.width = "5px";
@@ -383,27 +421,9 @@
     }
   });
 
-  function disableKeysDuringAnimation(e) {
-    if (!introCompleted || flyIn || reverseStartTime !== null) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-  }
-
-  window.addEventListener("keydown", disableKeysDuringAnimation, true);
-  window.addEventListener("keyup", disableKeysDuringAnimation, true);
   window.addEventListener("keyup", (e) => {
     const arrowKeys = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
-    if (
-      ((!rocketMoved && !introCompleted) ||
-        gameEnded ||
-        flyIn ||
-        reverseStartTime !== null) &&
-      !arrowKeys.includes(e.key)
-    ) {
-      e.preventDefault();
-      return;
-    }
+    if (!arrowKeys.includes(e.key)) return;
     switch (e.key) {
       case "ArrowUp":
         keys.up = false;
