@@ -3,7 +3,6 @@
 ---
 
 <style>
-  /* Bobbing animation for the button */
   @keyframes bobbingAnimation {
     0%,
     100% {
@@ -13,7 +12,7 @@
       transform: translateY(-5px);
     }
   }
-  /* Styling for the draw constellations button (initially hidden) */
+  /* Styling for the draw constellations button */
   #drawConstellationsButton {
     position: fixed;
     top: 10px;
@@ -34,13 +33,25 @@
 <button id="drawConstellationsButton">Draw Constellations</button>
 
 <script type="module">
-  // RESPONSIVE CHECK & INITIALIZATION
-  if (window.innerWidth < 768) {
+  // --- RESPONSIVE VISIBILITY CHECK ---
+  function updateDrawButtonVisibility() {
     const drawButton = document.getElementById("drawConstellationsButton");
-    if (drawButton) {
+    // If the rocket and arrow text aren't showing (i.e. on small screens), hide the draw button.
+    if (window.innerWidth < 768 || !window.rocketIntroCompleted) {
       drawButton.style.display = "none";
+    } else {
+      drawButton.style.display = "block";
     }
-  } else {
+  }
+
+  // --- INITIAL VISIBILITY CHECK ---
+  updateDrawButtonVisibility();
+
+  // --- UPDATE VISIBILITY ON RESIZE ---
+  window.addEventListener("resize", updateDrawButtonVisibility);
+
+  // --- DRAWING MODE LOGIC ---
+  if (window.innerWidth >= 768) {
     // --- DOM ELEMENT REFERENCES ---
     const drawButton = document.getElementById("drawConstellationsButton");
     const controlsContainer = document.getElementById("controls");
@@ -57,8 +68,6 @@
     let controlTextObserver = null;
 
     // --- METHODS ---
-
-    // Lock the control instructions by observing changes
     function lockControlInstructions() {
       if (controlsContainer) {
         controlsContainer.innerHTML = drawingInstructionsText;
@@ -73,23 +82,17 @@
         });
       }
     }
-
-    // Unlock the control instructions by disconnecting the observer
     function unlockControlInstructions() {
       if (controlTextObserver) {
         controlTextObserver.disconnect();
         controlTextObserver = null;
       }
     }
-
-    // Clear the control instructions display
     function clearControlInstructions() {
       if (controlsContainer) {
         controlsContainer.innerHTML = "";
       }
     }
-
-    // Fade a list of UI elements
     function fadeUIElements(newOpacity, durationSeconds) {
       const uiElements = [
         document.querySelector(".text-center"),
@@ -106,8 +109,6 @@
     }
 
     // --- EVENT HANDLERS ---
-
-    // Toggle drawing mode when the button is clicked
     drawButton.addEventListener("click", () => {
       if (!drawingModeActive && activeDrawingSession === null) {
         activeDrawingSession = { startTime: Date.now() };
@@ -131,7 +132,6 @@
       }
     });
 
-    // Track mouse movements for hover detection on the starfield
     window.addEventListener("mousemove", (mouseEvent) => {
       mouseEvent.preventDefault();
       if (!window.starfieldPaused) return;
@@ -149,12 +149,10 @@
       }
     });
 
-    // Clear hover state when the mouse leaves the window
     window.addEventListener("mouseout", () => {
       if (window.starfieldPaused) window.starfieldState.currentHover = null;
     });
 
-    // Start drawing a line or remove an existing line on mouse down
     window.addEventListener("mousedown", (mouseEvent) => {
       mouseEvent.preventDefault();
       if (!window.starfieldPaused) return;
@@ -205,7 +203,6 @@
       }
     });
 
-    // Complete the drawing line on mouse up and add it as a permanent line if applicable
     window.addEventListener("mouseup", (mouseEvent) => {
       mouseEvent.preventDefault();
       if (!window.starfieldPaused || !window.starfieldState.lineActive) return;
@@ -240,15 +237,12 @@
       window.starfieldState.lineStartStarIndex = null;
     });
 
-    // --- HELPER METHOD ---
-    // Calculate the distance from a point to a line segment
     function pointToSegmentDistance(point, segmentStart, segmentEnd) {
       const segmentLengthSquared =
         (segmentEnd.x - segmentStart.x) ** 2 +
         (segmentEnd.y - segmentStart.y) ** 2;
-      if (segmentLengthSquared === 0) {
+      if (segmentLengthSquared === 0)
         return Math.hypot(point.x - segmentStart.x, point.y - segmentStart.y);
-      }
       let projectionFactor =
         ((point.x - segmentStart.x) * (segmentEnd.x - segmentStart.x) +
           (point.y - segmentStart.y) * (segmentEnd.y - segmentStart.y)) /
@@ -264,13 +258,8 @@
       );
     }
 
-    // Prevent key events from interfering during drawing mode
-    ["keydown", "keypress", "keyup"].forEach((keyEventType) => {
-      window.addEventListener(
-        keyEventType,
-        (keyEvent) => keyEvent.preventDefault(),
-        true
-      );
-    });
+    ["keydown", "keypress", "keyup"].forEach((type) =>
+      window.addEventListener(type, (e) => e.preventDefault(), true)
+    );
   }
 </script>

@@ -60,7 +60,7 @@
 
       // --- STATE VARIABLES ---
       this.sessionStarted = false;
-      this.introCompleted = false;
+      window.introCompleted = false;
       this.readyForUserInput = false;
       this.flyingOutState = false;
 
@@ -104,6 +104,7 @@
       this.applyRocketTransform();
       requestAnimationFrame(this.updateRocket.bind(this));
       this.startIntroAnimation();
+      this.updateDisplayBasedOnScreenSize();
 
       // --- WINDOW RESIZE HANDLER ---
       window.addEventListener("resize", () => {
@@ -113,6 +114,8 @@
         this.currentPosX = this.targetX;
         this.currentPosY = this.targetY;
         this.applyRocketTransform();
+        // Update controls visibility based on screen size.
+        this.updateDisplayBasedOnScreenSize();
       });
 
       // --- RESET HANDLER ---
@@ -128,6 +131,27 @@
         }
         this.sessionStarted = false;
       });
+    }
+
+    // --- SCREEN SIZE CHECK ---
+    // Hides or shows the rocket and arrow controls,.
+    updateDisplayBasedOnScreenSize() {
+      if (window.innerWidth < 768) {
+        if (this.rocketElement) {
+          this.rocketElement.style.display = "none";
+        }
+        if (this.controlsElement) {
+          this.controlsElement.style.display = "none";
+        }
+      } else {
+        if (this.rocketElement) {
+          this.rocketElement.style.display = "block";
+        }
+        // Only show arrow controls if the intro has completed.
+        if (this.controlsElement && window.introCompleted) {
+          this.controlsElement.style.display = "block";
+        }
+      }
     }
 
     // --- DYNAMIC POSITION CALCULATION ---
@@ -158,7 +182,7 @@
         this.targetY,
         this.introDuration
       );
-      this.introCompleted = true;
+      window.introCompleted = true;
       this.readyForUserInput = true;
       window.inputAllowed = true;
       if (this.controlsElement) {
@@ -166,13 +190,11 @@
         this.controlsElement.innerHTML = "Use arrow keys to move the rocket.";
         this.fadeInElement(this.controlsElement, 0.5);
       }
-      // Show the Draw Constellations button after the intro.
-      const drawConstellationsButton = document.getElementById(
-        "drawConstellationsButton"
-      );
-      if (drawConstellationsButton) {
-        drawConstellationsButton.style.display = "block";
+      const drawButton = document.getElementById("drawConstellationsButton");
+      if (drawButton) {
+        drawButton.style.display = "block";
       }
+      window.rocketIntroCompleted = true;
     }
 
     // --- ANIMATION METHOD ---
@@ -266,7 +288,6 @@
         }
       }
       if (this.sessionStarted) {
-        // Constrain rocket within window boundaries.
         const halfWidth = 15,
           halfHeight = 15;
         this.currentPosX = Math.max(
@@ -394,7 +415,6 @@
       bulletAnimationFrameId = requestAnimationFrame(updateBullet);
     }
   }
-
   // INSTANTIATE THE ROCKET CONTROLLER TO START THE ROCKET FUNCTIONALITY
   const rocketControllerInstance = new RocketController();
 </script>
