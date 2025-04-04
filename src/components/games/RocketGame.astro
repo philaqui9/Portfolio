@@ -1,448 +1,193 @@
 ---
 // RocketGame.astro
-// This component holds the client‑side game logic using a game session.
-// Before a session starts, only arrow keys are allowed and the control text shows:
-//   "Use the arrow keys to move the rocket."
-// Once movement starts, a session begins and the control text displays:
-//   "Use the arrow keys to move the rocket.<br>Press 'Space' to shoot.<br>Press 'Enter' to end the game."
-// (If score > 0 it is appended.)
-// External UI elements (center text, GitHub, LinkedIn, resume, toggle button) are hidden during a session.
-// Pressing Enter during a session always ends the session, even if a drawn constellation is in the background.
 ---
 
 <script type="module">
-  console.log("RocketGame component loaded");
-
-  // Cache frequently used DOM elements.
-  const rocket = document.getElementById("rocket");
-  const ctrl = document.getElementById("controls");
-  const toggleButton = document.getElementById("toggleStarfield"); // Rendered elsewhere.
-  const textCenter = document.querySelector(".text-center");
-  const githubContainer = document.getElementById("github-container");
-  const linkedinContainer = document.getElementById("linkedin-container");
-  const resumeContainer = document.getElementById("resume-container");
-
-  // Helper: fade element.
-  function fade(element, opacity, duration = 0.5) {
-    if (element) {
-      element.style.transition = `opacity ${duration}s`;
-      element.style.opacity = opacity;
+  // RESPONSIVE CHECK: Hide rocket on small screens
+  if (window.innerWidth < 768) {
+    const rocketElement = document.getElementById("rocket");
+    if (rocketElement) {
+      rocketElement.style.display = "none";
     }
-  }
+  } else {
+    // --- UI ELEMENT REFERENCES ---
+    const controlsDisplay = document.getElementById("controls");
+    const drawButton = document.getElementById("drawConstellationsButton");
+    const centerText = document.querySelector(".text-center");
+    const githubSection = document.getElementById("github-container");
+    const linkedinSection = document.getElementById("linkedin-container");
+    const resumeSection = document.getElementById("resume-container");
 
-  // --- Global Game Session State ---
-  let sessionActive = false; // True once the rocket moves.
-  let uiHidden = false;
-  let rocketMoved = false;
-  let introCompleted = false; // Flag for completion of the intro animation.
-
-  // --- Constants for Intro & Fly‑in Animations ---
-  const introDelay = 1000,
-    introDur = 2000,
-    iX = -100,
-    iY = window.innerHeight / 2,
-    tX = window.innerWidth / 5,
-    tY = window.innerHeight / 2;
-
-  // --- Rocket State Variables ---
-  let posX = iX,
-    posY = iY,
-    spd = 3,
-    bAmp = 5,
-    bPer = 2000;
-  let keys = { up: false, left: false, down: false, right: false };
-  let currentAngle = Math.atan2(tY - iY, tX - iX) * (180 / Math.PI) + 90;
-  let startTime = performance.now();
-  let currentDisplayY = posY;
-
-  // --- Bullets, Score, and Target State ---
-  let bullets = [];
-  const bulletSpeed = 10;
-  let score = 0;
-  let currentTarget = null;
-  let gameEnded = false;
-
-  // --- Animation Variables for Reverse/Fly‑in (Drawing Mode) ---
-  let reverseStartTime = null;
-  const reverseDur = 2000;
-  let flyIn = false;
-  let flyInStartTime = null,
-    flyInStartX = 0,
-    flyInStartY = 0;
-  const flyInDur = 2000;
-
-  // --- Target Functions ---
-  function spawnTarget() {
-    if (currentTarget) return;
-    const ctrlRect = ctrl ? ctrl.getBoundingClientRect() : null;
-    const rocketRect = rocket.getBoundingClientRect();
-    let left, top;
-    for (let attempt = 0; attempt < 10; attempt++) {
-      left = Math.random() * (window.innerWidth - 32);
-      top = Math.random() * (window.innerHeight - 32);
-      if (
-        ctrlRect &&
-        left < ctrlRect.right &&
-        left + 32 > ctrlRect.left &&
-        top < ctrlRect.bottom &&
-        top + 32 > ctrlRect.top
-      )
-        continue;
-      if (
-        left < rocketRect.right &&
-        left + 32 > rocketRect.left &&
-        top < rocketRect.bottom &&
-        top + 32 > rocketRect.top
-      )
-        continue;
-      break;
-    }
-    const tar = document.createElement("div");
-    tar.classList.add(
-      "absolute",
-      "w-8",
-      "h-8",
-      "flex",
-      "items-center",
-      "justify-center",
-      "rounded-full",
-      "bg-red-500",
-      "border-4",
-      "border-white"
-    );
-    tar.style.left = `${left}px`;
-    tar.style.top = `${top}px`;
-    document.body.appendChild(tar);
-    currentTarget = tar;
-    tar.removalTimeout = setTimeout(removeTarget, 5000);
-  }
-
-  function removeTarget() {
-    if (currentTarget) {
-      clearTimeout(currentTarget.removalTimeout);
-      currentTarget.remove();
-      currentTarget = null;
-    }
-  }
-
-  // --- End Game Functionality ---
-  function endGame() {
-    if (currentTarget) {
-      clearTimeout(currentTarget.removalTimeout);
-      currentTarget.remove();
-      currentTarget = null;
-    }
-    fade(ctrl, "0", 0.5);
-    posX = tX;
-    posY = tY;
-    rocketMoved = false;
-    sessionActive = false;
-    score = 0;
-    if (ctrl) ctrl.innerHTML = "";
-    while (bullets.length) {
-      bullets[0].element.remove();
-      bullets.shift();
-    }
-    gameEnded = true;
-    currentAngle = 90;
-    // Restore external UI.
-    fade(textCenter, "1", 0.5);
-    fade(githubContainer, "1", 0.5);
-    fade(linkedinContainer, "1", 0.5);
-    fade(resumeContainer, "1", 0.5);
-    fade(toggleButton, "1", 0.5);
-    uiHidden = false;
-    setTimeout(() => {
-      gameEnded = false;
-      rocketMoved = false;
-      startTime = performance.now();
-      fade(ctrl, "0", 0); // Clear session controls.
-    }, 1000);
-  }
-
-  // --- Rocket Update Loop ---
-  function updateRocket() {
-    const now = performance.now();
-    const winW = window.innerWidth,
-      winH = window.innerHeight;
-
-    // Update toggle button appearance.
-    if (toggleButton) {
-      if (window.starfieldPaused) toggleButton.classList.add("wireframe-bob");
-      else toggleButton.classList.remove("wireframe-bob");
-    }
-
-    // Handle reverse/fly‑in animations (drawing mode).
-    if (window.starfieldPaused) {
-      fade(ctrl, "0", 0.5);
-      if (reverseStartTime === null) reverseStartTime = now;
-      const prog = Math.min((now - reverseStartTime) / reverseDur, 1);
-      posX = tX + (iX - tX) * prog;
-      posY = tY + (iY - tY) * prog;
-      currentAngle = Math.atan2(iY - tY, iX - tX) * (180 / Math.PI) + 90;
-      rocket.style.left = posX + "px";
-      rocket.style.top = posY + "px";
-      rocket.style.transform = `translate(-50%, -50%) rotate(${currentAngle}deg)`;
-      return;
-    } else {
-      if (reverseStartTime !== null) {
-        flyIn = true;
-        flyInStartTime = now;
-        flyInStartX = posX;
-        flyInStartY = posY;
-        reverseStartTime = null;
-        fade(ctrl, "0", 0.5);
+    // --- FADE FUNCTION ---
+    function fadeElement(element, targetOpacity, transitionDuration = 0.5) {
+      if (element) {
+        element.style.transition = `opacity ${transitionDuration}s`;
+        element.style.opacity = targetOpacity;
       }
-      if (flyIn) {
-        const flyProg = Math.min((now - flyInStartTime) / flyInDur, 1);
-        posX = flyInStartX + (tX - flyInStartX) * flyProg;
-        posY = flyInStartY + (tY - flyInStartY) * flyProg;
-        currentAngle = Math.atan2(tY - posY, tX - posX) * (180 / Math.PI) + 90;
-        rocket.style.left = posX + "px";
-        rocket.style.top = posY + "px";
-        rocket.style.transform = `translate(-50%, -50%) rotate(${currentAngle}deg)`;
-        if (flyProg >= 1) {
-          flyIn = false;
-          posX = tX;
-          posY = tY;
-          fade(ctrl, "1", 0.5);
+    }
+
+    // --- GAME STATE VARIABLES ---
+    let gameSessionActive = false;
+    let playerScore = 0;
+    let activeTargetElement = null;
+    let gameHasEnded = false;
+
+    // --- EVENT HANDLER: START GAME SESSION ---
+    window.addEventListener("rocketGameSessionStart", () => {
+      if (!gameSessionActive) {
+        gameSessionActive = true;
+        if (controlsDisplay) {
+          controlsDisplay.innerHTML =
+            "Use arrow keys to move the rocket.<br>Press 'Space' to shoot.<br>Press 'Enter' to end the game.";
+          fadeElement(controlsDisplay, "1", 0.5);
         }
-        return;
+        fadeElement(centerText, "0", 0.5);
+        fadeElement(githubSection, "0", 0.5);
+        fadeElement(linkedinSection, "0", 0.5);
+        fadeElement(resumeSection, "0", 0.5);
+        fadeElement(drawButton, "0", 0.5);
       }
-    }
+    });
 
-    const elapsed = now - startTime;
-    let dY = posY;
-
-    // Intro animation.
-    if (!introCompleted) {
-      if (elapsed < introDelay) {
-        posX = iX;
-        posY = iY;
-        currentAngle = Math.atan2(tY - iY, tX - iX) * (180 / Math.PI) + 90;
-      } else if (elapsed < introDelay + introDur) {
-        const prog = (elapsed - introDelay) / introDur;
-        posX = iX + prog * (tX - iX);
-        posY = iY + prog * (tY - iY);
-        currentAngle = Math.atan2(tY - iY, tX - iX) * (180 / Math.PI) + 90;
-      } else {
-        introCompleted = true;
-        posX = tX;
-        posY = tY;
-        fade(ctrl, "0", 0);
+    // --- EVENT HANDLER: KEYBOARD EVENTS ---
+    window.addEventListener("keydown", (keyboardEvent) => {
+      const arrowKeys = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
+      if (!gameSessionActive && arrowKeys.includes(keyboardEvent.key)) {
+        window.dispatchEvent(new CustomEvent("rocketGameSessionStart"));
       }
-    } else {
-      // Process arrow key movement.
-      let dx = 0,
-        dy = 0;
-      if (keys.up) dy -= 1;
-      if (keys.left) dx -= 1;
-      if (keys.down) dy += 1;
-      if (keys.right) dx += 1;
-      if (dx || dy) {
-        const len = Math.sqrt(dx * dx + dy * dy);
-        dx /= len;
-        dy /= len;
-        posX += dx * spd;
-        posY += dy * spd;
-        currentAngle = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
-        rocketMoved = true;
-        // Start session on first arrow key movement.
-        if (!sessionActive) {
-          sessionActive = true;
-          // Hide external UI.
-          fade(textCenter, "0", 0.5);
-          fade(githubContainer, "0", 0.5);
-          fade(linkedinContainer, "0", 0.5);
-          fade(resumeContainer, "0", 0.5);
-          fade(toggleButton, "0", 0.5);
-          ctrl.innerHTML =
-            "Use the arrow keys to move the rocket.<br>Press 'Space' to shoot.<br>Press 'Enter' to end the game.<br>Score: 0";
-        }
-      } else {
-        // If no movement and session hasn't started, show default instructions.
-        if (!sessionActive) {
-          ctrl.innerHTML = "Use the arrow keys to move the rocket.";
-          fade(ctrl, "1", 0.5);
-        }
-        const phase = (now % bPer) / bPer;
-        const offset = bAmp * Math.sin(phase * 2 * Math.PI);
-        dY = posY + offset;
+      if (gameSessionActive && keyboardEvent.key === "Enter") {
+        endGameSession();
       }
-    }
+    });
 
-    if (rocketMoved) {
-      posX = Math.max(0, Math.min(winW, posX));
-      posY = Math.max(0, Math.min(winH, posY));
-    }
-
-    currentDisplayY = dY;
-    rocket.style.left = posX + "px";
-    rocket.style.top = dY + "px";
-    rocket.style.transform = `translate(-50%, -50%) rotate(${currentAngle}deg)`;
-
-    // Update bullets.
-    for (let i = bullets.length - 1; i >= 0; i--) {
-      const b = bullets[i];
-      b.x += b.vx;
-      b.y += b.vy;
-      b.element.style.left = b.x + "px";
-      b.element.style.top = b.y + "px";
-      if (b.x < 0 || b.x > winW || b.y < 0 || b.y > winH) {
-        b.element.remove();
-        bullets.splice(i, 1);
-      }
-    }
-
-    // Check bullet collisions with target (only during session).
-    if (sessionActive && currentTarget) {
-      const rect = currentTarget.getBoundingClientRect();
-      for (let i = bullets.length - 1; i >= 0; i--) {
-        const b = bullets[i];
+    // --- METHOD: Spawn a new target ---
+    function spawnTargetElement() {
+      if (activeTargetElement) return;
+      const controlsRect = controlsDisplay.getBoundingClientRect();
+      const rocketRect = document
+        .getElementById("rocket")
+        .getBoundingClientRect();
+      let targetX, targetY;
+      for (let attempt = 0; attempt < 10; attempt++) {
+        targetX = Math.random() * (window.innerWidth - 32);
+        targetY = Math.random() * (window.innerHeight - 32);
         if (
-          b.x >= rect.left &&
-          b.x <= rect.right &&
-          b.y >= rect.top &&
-          b.y <= rect.bottom
+          targetX < controlsRect.right &&
+          targetX + 32 > controlsRect.left &&
+          targetY < controlsRect.bottom &&
+          targetY + 32 > controlsRect.top
+        )
+          continue;
+        if (
+          targetX < rocketRect.right &&
+          targetX + 32 > rocketRect.left &&
+          targetY < rocketRect.bottom &&
+          targetY + 32 > rocketRect.top
+        )
+          continue;
+        break;
+      }
+      const newTarget = document.createElement("div");
+      newTarget.style.position = "absolute";
+      newTarget.style.width = "32px";
+      newTarget.style.height = "32px";
+      newTarget.style.backgroundColor = "red";
+      newTarget.style.border = "4px solid white";
+      newTarget.style.borderRadius = "50%";
+      newTarget.style.left = `${targetX}px`;
+      newTarget.style.top = `${targetY}px`;
+      document.body.appendChild(newTarget);
+      activeTargetElement = newTarget;
+      newTarget.removalTimeout = setTimeout(removeTargetElement, 5000);
+    }
+
+    // --- METHOD: Remove the current target ---
+    function removeTargetElement() {
+      if (activeTargetElement) {
+        clearTimeout(activeTargetElement.removalTimeout);
+        activeTargetElement.remove();
+        activeTargetElement = null;
+      }
+    }
+
+    // --- METHOD: End the game session ---
+    function endGameSession() {
+      if (activeTargetElement) {
+        clearTimeout(activeTargetElement.removalTimeout);
+        activeTargetElement.remove();
+        activeTargetElement = null;
+      }
+      fadeElement(controlsDisplay, "0", 0.5);
+      gameSessionActive = false;
+      playerScore = 0;
+      if (controlsDisplay) controlsDisplay.innerHTML = "";
+      gameHasEnded = true;
+      fadeElement(centerText, "1", 0.5);
+      fadeElement(githubSection, "1", 0.5);
+      fadeElement(linkedinSection, "1", 0.5);
+      fadeElement(resumeSection, "1", 0.5);
+      fadeElement(drawButton, "1", 0.5);
+      setTimeout(() => {
+        gameHasEnded = false;
+      }, 1000);
+      window.dispatchEvent(new CustomEvent("rocketReset"));
+    }
+
+    // --- METHOD: Update game state (collision detection, target spawning) ---
+    function updateGameState() {
+      const bulletElements = document.getElementsByClassName("bullet");
+      const bulletsArray = Array.from(bulletElements);
+      // Remove offscreen bullets
+      bulletsArray.forEach((bulletElement) => {
+        const bulletRect = bulletElement.getBoundingClientRect();
+        if (
+          bulletRect.right < 0 ||
+          bulletRect.left > window.innerWidth ||
+          bulletRect.bottom < 0 ||
+          bulletRect.top > window.innerHeight
         ) {
-          if (!currentTarget.dataset.hit) {
-            currentTarget.dataset.hit = "true";
-            currentTarget.style.backgroundColor = "blue";
-            clearTimeout(currentTarget.removalTimeout);
-            b.element.remove();
-            bullets.splice(i, 1);
-            score++;
-            setTimeout(removeTarget, 500);
+          bulletElement.remove();
+        }
+      });
+      // Check for bullet-target collisions
+      if (gameSessionActive && activeTargetElement) {
+        const targetRect = activeTargetElement.getBoundingClientRect();
+        for (let bulletElement of bulletsArray) {
+          const bulletRect = bulletElement.getBoundingClientRect();
+          if (
+            bulletRect.left < targetRect.right &&
+            bulletRect.right > targetRect.left &&
+            bulletRect.top < targetRect.bottom &&
+            bulletRect.bottom > targetRect.top
+          ) {
+            if (!activeTargetElement.dataset.hit) {
+              activeTargetElement.dataset.hit = "true";
+              activeTargetElement.style.backgroundColor = "blue";
+              clearTimeout(activeTargetElement.removalTimeout);
+              bulletElement.remove();
+              playerScore++;
+              if (controlsDisplay) {
+                controlsDisplay.innerHTML =
+                  "Use arrow keys to move the rocket.<br>Press 'Space' to shoot.<br>Press 'Enter' to end the game.<br>Score: " +
+                  playerScore;
+              }
+              setTimeout(removeTargetElement, 500);
+            }
+            break;
           }
-          break;
         }
       }
-    }
-
-    // Update control text based on session.
-    if (ctrl && introCompleted && !flyIn) {
-      if (sessionActive) {
-        let txt =
-          "Use the arrow keys to move the rocket.<br>Press 'Space' to shoot.<br>Press 'Enter' to end the game.";
-        if (score > 0) {
-          txt += `<br>Score: ${score}`;
-        }
-        ctrl.innerHTML = txt;
-        fade(ctrl, "1", 0.5);
-      } else {
-        ctrl.innerHTML = "Use the arrow keys to move the rocket.";
-        fade(ctrl, "1", 0.5);
+      // Spawn a new target if none exists
+      if (gameSessionActive && !gameHasEnded && !activeTargetElement) {
+        spawnTargetElement();
       }
     }
 
-    // Spawn targets during an active session.
-    if (sessionActive && !gameEnded && !currentTarget) {
-      spawnTarget();
+    // --- MAIN GAME LOOP ---
+    function gameLoop() {
+      updateGameState();
+      requestAnimationFrame(gameLoop);
     }
+    gameLoop();
   }
-
-  // --- Key Handling ---
-
-  // Outside a session, allow only arrow keys.
-  function disableNonAllowedKeys(e) {
-    if (!sessionActive) {
-      const allowedKeys = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
-      if (!allowedKeys.includes(e.key)) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
-    }
-  }
-  window.addEventListener("keydown", disableNonAllowedKeys, true);
-
-  // Disable keys during certain animations—but if a session is active and Enter is pressed, do not block it.
-  function disableKeysDuringAnimation(e) {
-    if (
-      (!introCompleted || flyIn || reverseStartTime !== null) &&
-      !(sessionActive && e.key === "Enter")
-    ) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-  }
-  window.addEventListener("keydown", disableKeysDuringAnimation, true);
-  window.addEventListener("keyup", disableKeysDuringAnimation, true);
-
-  // Primary keydown listener.
-  window.addEventListener("keydown", (e) => {
-    // Outside a session, only arrow keys are accepted.
-    if (
-      !sessionActive &&
-      !["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)
-    ) {
-      e.preventDefault();
-      return;
-    }
-    // Process arrow keys.
-    switch (e.key) {
-      case "ArrowUp":
-        keys.up = true;
-        break;
-      case "ArrowLeft":
-        keys.left = true;
-        break;
-      case "ArrowDown":
-        keys.down = true;
-        break;
-      case "ArrowRight":
-        keys.right = true;
-        break;
-    }
-    // In a session, allow Space and Enter.
-    if (sessionActive) {
-      if (e.key === "Enter") {
-        window.starfieldPaused = false;
-        endGame();
-        return;
-      }
-      if (e.code === "Space") {
-        const bulletEl = document.createElement("div");
-        bulletEl.style.position = "absolute";
-        bulletEl.style.width = "5px";
-        bulletEl.style.height = "5px";
-        bulletEl.style.backgroundColor = "#ff0000";
-        bulletEl.style.borderRadius = "50%";
-        document.body.appendChild(bulletEl);
-        const off = 20;
-        const rad = (currentAngle * Math.PI) / 180;
-        const bx = posX + Math.sin(rad) * off;
-        const by = posY - Math.cos(rad) * off;
-        bulletEl.style.left = bx + "px";
-        bulletEl.style.top = by + "px";
-        const vx = Math.sin(rad) * bulletSpeed;
-        const vy = -Math.cos(rad) * bulletSpeed;
-        bullets.push({ x: bx, y: by, vx, vy, element: bulletEl });
-      }
-    }
-  });
-
-  window.addEventListener("keyup", (e) => {
-    const arrowKeys = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
-    if (!arrowKeys.includes(e.key)) return;
-    switch (e.key) {
-      case "ArrowUp":
-        keys.up = false;
-        break;
-      case "ArrowLeft":
-        keys.left = false;
-        break;
-      case "ArrowDown":
-        keys.down = false;
-        break;
-      case "ArrowRight":
-        keys.right = false;
-        break;
-    }
-  });
-
-  function rocketLoop() {
-    updateRocket();
-    requestAnimationFrame(rocketLoop);
-  }
-  rocketLoop();
 </script>

@@ -1,11 +1,10 @@
 ---
 // DrawConstellations.astro
-// Renders the “Draw Constellations” toggle button and sets up mouse event handlers for drawing mode.
-// This component works in conjunction with Starfield.astro via window.starfieldState.
 ---
 
 <style>
-  @keyframes bobbing {
+  /* Bobbing animation for the button */
+  @keyframes bobbingAnimation {
     0%,
     100% {
       transform: translateY(0);
@@ -14,7 +13,8 @@
       transform: translateY(-5px);
     }
   }
-  #toggleStarfield {
+  /* Styling for the draw constellations button (initially hidden) */
+  #drawConstellationsButton {
     position: fixed;
     top: 10px;
     right: 10px;
@@ -26,195 +26,251 @@
     border: 2px solid #33ff00;
     border-radius: 4px;
     cursor: pointer;
-    animation: bobbing 2s infinite;
-  }
-  #controls-draw {
-    position: fixed;
-    bottom: 2rem;
-    right: 2rem;
-    color: #33ff00;
-    font-family: monospace;
-    font-size: 1rem;
-    opacity: 0;
-    transition: opacity 0.5s;
-    animation: bobbing 2s infinite;
-    z-index: 1000;
+    animation: bobbingAnimation 2s infinite;
+    display: none;
   }
 </style>
 
-<button id="toggleStarfield">Draw Constellations</button>
-<div id="controls-draw"></div>
+<button id="drawConstellationsButton">Draw Constellations</button>
 
 <script type="module">
-  const toggleButton = document.getElementById("toggleStarfield");
-  const controlsDraw = document.getElementById("controls-draw");
-  let drawingMode = false; // false: active mode; true: drawing mode
-
-  // Utility function to compute distance from point p to line segment (v-w)
-  function pointToSegmentDistance(p, v, w) {
-    const l2 = (w.x - v.x) ** 2 + (w.y - v.y) ** 2;
-    if (l2 === 0) return Math.hypot(p.x - v.x, p.y - v.y);
-    let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
-    t = Math.max(0, Math.min(1, t));
-    const projection = {
-      x: v.x + t * (w.x - v.x),
-      y: v.y + t * (w.y - v.y),
-    };
-    return Math.hypot(p.x - projection.x, p.y - projection.y);
-  }
-
-  toggleButton.addEventListener("click", () => {
-    if (!drawingMode) {
-      // Switch to drawing mode.
-      window.stopActiveLoop();
-      window.startStaticLoop();
-      toggleButton.textContent = "Stop drawing";
-      window.starfieldPaused = true;
-      // Fade out external UI elements if they exist.
-      const centerText = document.querySelector(".text-center");
-      const githubContainer = document.getElementById("github-container");
-      const linkedinContainer = document.getElementById("linkedin-container");
-      const resumeContainer = document.getElementById("resume-container");
-      if (centerText) {
-        centerText.style.transition = "opacity 0.2s";
-        centerText.style.opacity = "0";
-      }
-      if (githubContainer) {
-        githubContainer.style.transition = "opacity 0.2s";
-        githubContainer.style.opacity = "0";
-      }
-      if (linkedinContainer) {
-        linkedinContainer.style.transition = "opacity 0.2s";
-        linkedinContainer.style.opacity = "0";
-      }
-      if (resumeContainer) {
-        resumeContainer.style.transition = "opacity 0.2s";
-        resumeContainer.style.opacity = "0";
-      }
-      controlsDraw.innerHTML =
-        "Click &amp; drag on a star to create a line.<br>Drag the line to another star to connect them.<br>Click on a line to remove it.";
-      controlsDraw.style.opacity = "1";
-    } else {
-      // Switch back to active mode.
-      window.stopStaticLoop();
-      window.startActiveLoop();
-      toggleButton.textContent = "Draw Constellations";
-      window.starfieldPaused = false;
-      const centerText = document.querySelector(".text-center");
-      const githubContainer = document.getElementById("github-container");
-      const linkedinContainer = document.getElementById("linkedin-container");
-      const resumeContainer = document.getElementById("resume-container");
-      if (centerText) {
-        centerText.style.transition = "opacity 0.5s";
-        centerText.style.opacity = "1";
-      }
-      if (githubContainer) {
-        githubContainer.style.transition = "opacity 0.5s";
-        githubContainer.style.opacity = "1";
-      }
-      if (linkedinContainer) {
-        linkedinContainer.style.transition = "opacity 0.5s";
-        linkedinContainer.style.opacity = "1";
-      }
-      if (resumeContainer) {
-        resumeContainer.style.transition = "opacity 0.5s";
-        resumeContainer.style.opacity = "1";
-      }
-      controlsDraw.style.opacity = "0";
+  // RESPONSIVE CHECK & INITIALIZATION
+  if (window.innerWidth < 768) {
+    const drawButton = document.getElementById("drawConstellationsButton");
+    if (drawButton) {
+      drawButton.style.display = "none";
     }
-    drawingMode = !drawingMode;
-  });
+  } else {
+    // --- DOM ELEMENT REFERENCES ---
+    const drawButton = document.getElementById("drawConstellationsButton");
+    const controlsContainer = document.getElementById("controls");
 
-  // --- Drawing Mode Mouse Events ---
-  window.addEventListener("mousemove", (e) => {
-    if (!window.starfieldPaused) return;
-    const canvas = document.getElementById("starfield");
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    window.starfieldState.currentHover = {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-    };
-    if (window.starfieldState.lineActive) {
-      window.starfieldState.lineEnd.x = window.starfieldState.currentHover.x;
-      window.starfieldState.lineEnd.y = window.starfieldState.currentHover.y;
+    // --- DRAWING MODE INSTRUCTIONS ---
+    const drawingInstructionsText =
+      "Click &amp; drag on a star to create a line.<br>" +
+      "Drag the line to another star to connect them.<br>" +
+      "Click on a line to remove it.";
+
+    // --- STATE VARIABLES ---
+    let drawingModeActive = false;
+    let activeDrawingSession = null;
+    let controlTextObserver = null;
+
+    // --- METHODS ---
+
+    // Lock the control instructions by observing changes
+    function lockControlInstructions() {
+      if (controlsContainer) {
+        controlsContainer.innerHTML = drawingInstructionsText;
+        controlTextObserver = new MutationObserver(() => {
+          if (controlsContainer.innerHTML.trim() !== drawingInstructionsText) {
+            controlsContainer.innerHTML = drawingInstructionsText;
+          }
+        });
+        controlTextObserver.observe(controlsContainer, {
+          childList: true,
+          subtree: true,
+        });
+      }
     }
-  });
-  window.addEventListener("mouseout", () => {
-    if (window.starfieldPaused) window.starfieldState.currentHover = null;
-  });
 
-  window.addEventListener("mousedown", (e) => {
-    if (!window.starfieldPaused) return;
-    const canvas = document.getElementById("starfield");
-    if (!canvas) return;
-    const { left, top } = canvas.getBoundingClientRect();
-    const clickX = e.clientX - left;
-    const clickY = e.clientY - top;
-    const stars = window.starfieldState.stars;
-    let starClicked = false;
+    // Unlock the control instructions by disconnecting the observer
+    function unlockControlInstructions() {
+      if (controlTextObserver) {
+        controlTextObserver.disconnect();
+        controlTextObserver = null;
+      }
+    }
 
-    // Check if click is on a star (within 20px radius).
-    if (stars) {
-      for (let i = 0; i < stars.length; i++) {
-        const star = stars[i];
-        if ((star.x - clickX) ** 2 + (star.y - clickY) ** 2 < 400) {
-          starClicked = true;
-          window.starfieldState.lineActive = true;
-          window.starfieldState.lineStart = { x: star.x, y: star.y };
-          window.starfieldState.lineEnd = { x: clickX, y: clickY };
-          window.starfieldState.lineStartStarIndex = i;
-          break;
+    // Clear the control instructions display
+    function clearControlInstructions() {
+      if (controlsContainer) {
+        controlsContainer.innerHTML = "";
+      }
+    }
+
+    // Fade a list of UI elements
+    function fadeUIElements(newOpacity, durationSeconds) {
+      const uiElements = [
+        document.querySelector(".text-center"),
+        document.getElementById("github-container"),
+        document.getElementById("linkedin-container"),
+        document.getElementById("resume-container"),
+      ];
+      uiElements.forEach((element) => {
+        if (element) {
+          element.style.transition = `opacity ${durationSeconds}s`;
+          element.style.opacity = newOpacity;
         }
-      }
-    }
-    // If no star was clicked, check if the click is near a permanent line.
-    if (!starClicked) {
-      const tolerance = 10; // pixels
-      const lines = window.starfieldState.permanentLines || [];
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const s1 = window.starfieldState.stars[line.startIndex];
-        const s2 = window.starfieldState.stars[line.endIndex];
-        const distance = pointToSegmentDistance(
-          { x: clickX, y: clickY },
-          s1,
-          s2
-        );
-        if (distance <= tolerance) {
-          // Remove the line from the permanentLines array.
-          window.starfieldState.permanentLines.splice(i, 1);
-          break;
-        }
-      }
-    }
-  });
-
-  window.addEventListener("mouseup", (e) => {
-    if (!window.starfieldPaused || !window.starfieldState.lineActive) return;
-    const canvas = document.getElementById("starfield");
-    if (!canvas) return;
-    const { left, top } = canvas.getBoundingClientRect();
-    const releaseX = e.clientX - left;
-    const releaseY = e.clientY - top;
-    let targetStarIndex = null;
-    const stars = window.starfieldState.stars;
-    for (let i = 0; i < stars.length; i++) {
-      if (i === window.starfieldState.lineStartStarIndex) continue;
-      if ((stars[i].x - releaseX) ** 2 + (stars[i].y - releaseY) ** 2 < 400) {
-        targetStarIndex = i;
-        break;
-      }
-    }
-    if (targetStarIndex !== null) {
-      if (!window.starfieldState.permanentLines)
-        window.starfieldState.permanentLines = [];
-      window.starfieldState.permanentLines.push({
-        startIndex: window.starfieldState.lineStartStarIndex,
-        endIndex: targetStarIndex,
       });
     }
-    window.starfieldState.lineActive = false;
-    window.starfieldState.lineStartStarIndex = null;
-  });
+
+    // --- EVENT HANDLERS ---
+
+    // Toggle drawing mode when the button is clicked
+    drawButton.addEventListener("click", () => {
+      if (!drawingModeActive && activeDrawingSession === null) {
+        activeDrawingSession = { startTime: Date.now() };
+        window.stopActiveLoop();
+        window.startStaticLoop();
+        drawButton.textContent = "Stop drawing";
+        window.starfieldPaused = true;
+        fadeUIElements("0", 0.2);
+        lockControlInstructions();
+        drawingModeActive = true;
+      } else if (drawingModeActive) {
+        activeDrawingSession = null;
+        window.stopStaticLoop();
+        window.startActiveLoop();
+        drawButton.textContent = "Draw Constellations";
+        window.starfieldPaused = false;
+        fadeUIElements("1", 0.5);
+        unlockControlInstructions();
+        clearControlInstructions();
+        drawingModeActive = false;
+      }
+    });
+
+    // Track mouse movements for hover detection on the starfield
+    window.addEventListener("mousemove", (mouseEvent) => {
+      mouseEvent.preventDefault();
+      if (!window.starfieldPaused) return;
+      const starfieldCanvas = document.getElementById("starfield");
+      if (!starfieldCanvas) return;
+      const canvasRect = starfieldCanvas.getBoundingClientRect();
+      window.starfieldState.currentHover = {
+        x: mouseEvent.clientX - canvasRect.left,
+        y: mouseEvent.clientY - canvasRect.top,
+      };
+      if (window.starfieldState.lineActive) {
+        window.starfieldState.lineEnd = {
+          ...window.starfieldState.currentHover,
+        };
+      }
+    });
+
+    // Clear hover state when the mouse leaves the window
+    window.addEventListener("mouseout", () => {
+      if (window.starfieldPaused) window.starfieldState.currentHover = null;
+    });
+
+    // Start drawing a line or remove an existing line on mouse down
+    window.addEventListener("mousedown", (mouseEvent) => {
+      mouseEvent.preventDefault();
+      if (!window.starfieldPaused) return;
+      const starfieldCanvas = document.getElementById("starfield");
+      if (!starfieldCanvas) return;
+      const canvasRect = starfieldCanvas.getBoundingClientRect();
+      const clickX = mouseEvent.clientX - canvasRect.left;
+      const clickY = mouseEvent.clientY - canvasRect.top;
+      const starsArray = window.starfieldState.stars;
+      let starWasClicked = false;
+      if (starsArray) {
+        for (let index = 0; index < starsArray.length; index++) {
+          const currentStar = starsArray[index];
+          if (
+            (currentStar.x - clickX) ** 2 + (currentStar.y - clickY) ** 2 <
+            400
+          ) {
+            starWasClicked = true;
+            window.starfieldState.lineActive = true;
+            window.starfieldState.lineStart = {
+              x: currentStar.x,
+              y: currentStar.y,
+            };
+            window.starfieldState.lineEnd = { x: clickX, y: clickY };
+            window.starfieldState.lineStartStarIndex = index;
+            break;
+          }
+        }
+      }
+      if (!starWasClicked) {
+        const clickTolerance = 10;
+        const linesArray = window.starfieldState.permanentLines || [];
+        for (let index = 0; index < linesArray.length; index++) {
+          const currentLine = linesArray[index];
+          const startStar = window.starfieldState.stars[currentLine.startIndex];
+          const endStar = window.starfieldState.stars[currentLine.endIndex];
+          if (
+            pointToSegmentDistance(
+              { x: clickX, y: clickY },
+              startStar,
+              endStar
+            ) <= clickTolerance
+          ) {
+            window.starfieldState.permanentLines.splice(index, 1);
+            break;
+          }
+        }
+      }
+    });
+
+    // Complete the drawing line on mouse up and add it as a permanent line if applicable
+    window.addEventListener("mouseup", (mouseEvent) => {
+      mouseEvent.preventDefault();
+      if (!window.starfieldPaused || !window.starfieldState.lineActive) return;
+      const starfieldCanvas = document.getElementById("starfield");
+      if (!starfieldCanvas) return;
+      const canvasRect = starfieldCanvas.getBoundingClientRect();
+      const releaseX = mouseEvent.clientX - canvasRect.left;
+      const releaseY = mouseEvent.clientY - canvasRect.top;
+      let targetStarIndex = null;
+      const starsArray = window.starfieldState.stars;
+      for (let index = 0; index < starsArray.length; index++) {
+        if (index === window.starfieldState.lineStartStarIndex) continue;
+        if (
+          (starsArray[index].x - releaseX) ** 2 +
+            (starsArray[index].y - releaseY) ** 2 <
+          400
+        ) {
+          targetStarIndex = index;
+          break;
+        }
+      }
+      if (targetStarIndex !== null) {
+        if (!window.starfieldState.permanentLines) {
+          window.starfieldState.permanentLines = [];
+        }
+        window.starfieldState.permanentLines.push({
+          startIndex: window.starfieldState.lineStartStarIndex,
+          endIndex: targetStarIndex,
+        });
+      }
+      window.starfieldState.lineActive = false;
+      window.starfieldState.lineStartStarIndex = null;
+    });
+
+    // --- HELPER METHOD ---
+    // Calculate the distance from a point to a line segment
+    function pointToSegmentDistance(point, segmentStart, segmentEnd) {
+      const segmentLengthSquared =
+        (segmentEnd.x - segmentStart.x) ** 2 +
+        (segmentEnd.y - segmentStart.y) ** 2;
+      if (segmentLengthSquared === 0) {
+        return Math.hypot(point.x - segmentStart.x, point.y - segmentStart.y);
+      }
+      let projectionFactor =
+        ((point.x - segmentStart.x) * (segmentEnd.x - segmentStart.x) +
+          (point.y - segmentStart.y) * (segmentEnd.y - segmentStart.y)) /
+        segmentLengthSquared;
+      projectionFactor = Math.max(0, Math.min(1, projectionFactor));
+      const projectionPoint = {
+        x: segmentStart.x + projectionFactor * (segmentEnd.x - segmentStart.x),
+        y: segmentStart.y + projectionFactor * (segmentEnd.y - segmentStart.y),
+      };
+      return Math.hypot(
+        point.x - projectionPoint.x,
+        point.y - projectionPoint.y
+      );
+    }
+
+    // Prevent key events from interfering during drawing mode
+    ["keydown", "keypress", "keyup"].forEach((keyEventType) => {
+      window.addEventListener(
+        keyEventType,
+        (keyEvent) => keyEvent.preventDefault(),
+        true
+      );
+    });
+  }
 </script>

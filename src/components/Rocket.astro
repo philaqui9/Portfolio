@@ -1,10 +1,9 @@
 ---
 // Rocket.astro
-import RocketGame from "./games/RocketGame.astro";
 ---
 
 <style>
-  /* Rocket element styling */
+  /* Styling for the rocket element */
   #rocket {
     position: absolute;
     z-index: 10;
@@ -12,46 +11,390 @@ import RocketGame from "./games/RocketGame.astro";
     top: 0;
     transform: translate(-50%, -50%);
   }
-  /* Controls overlay styling – initially hidden, with bobbing animation */
-  @keyframes bobbing {
+  /* Bobbing animation keyframes */
+  @keyframes bobbingAnimation {
     0%,
     100% {
       transform: translateY(0);
     }
     50% {
-      transform: translateY(-2px);
+      transform: translateY(-5px);
     }
-  }
-  #controls {
-    position: fixed;
-    bottom: 2rem;
-    right: 2rem;
-    color: #33ff00;
-    font-family: monospace;
-    font-size: 1rem;
-    opacity: 0; /* Hidden initially */
-    transition: opacity 0.5s;
-    animation: bobbing 2s infinite;
   }
 </style>
 
-<!-- Rocket element: an inline SVG for the rocket -->
+<script type="module">
+  // LOCK INPUT UNTIL INTRO COMPLETES
+  window.inputAllowed = false;
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      if (!window.inputAllowed) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    },
+    true
+  );
+</script>
+
 <div id="rocket">
   <svg width="30" height="30" viewBox="0 0 100 100">
     <polygon
       points="50,10 90,90 50,70 10,90"
       fill="none"
       stroke="#33FF00"
-      stroke-width="5"
-    >
-    </polygon>
+      stroke-width="5"></polygon>
     <line x1="50" y1="10" x2="50" y2="70" stroke="#33FF00" stroke-width="3"
     ></line>
   </svg>
 </div>
 
-<!-- Controls overlay -->
-<div id="controls"></div>
+<script type="module">
+  // CLASS: RocketController – Handles rocket animations, movement, and shooting.
+  class RocketController {
+    constructor() {
+      // --- DOM ELEMENT REFERENCES ---
+      this.rocketElement = document.getElementById("rocket");
+      this.controlsElement = document.getElementById("controls");
 
-<!-- Import the game logic component to run on the client -->
-<RocketGame />
+      // --- STATE VARIABLES ---
+      this.sessionStarted = false;
+      this.introCompleted = false;
+      this.readyForUserInput = false;
+      this.flyingOutState = false;
+
+      // --- DYNAMIC POSITION VARIABLES (computed below) ---
+      this.recalculateRocketPositions();
+      // Set current position to initial positions
+      this.currentPosX = this.initialX;
+      this.currentPosY = this.initialY;
+      this.currentRotationAngle = 90;
+
+      // --- MOVEMENT PARAMETERS ---
+      this.movementSpeed = 3;
+      this.bobbingAmplitude = 5;
+      this.bobbingPeriod = 2000;
+      this.directionKeys = {
+        up: false,
+        down: false,
+        left: false,
+        right: false,
+      };
+
+      // --- INTRO ANIMATION PARAMETERS ---
+      this.introDelayDuration = 1000;
+      this.introDuration = 2000;
+
+      // --- TIMING VARIABLES ---
+      this.startTimestamp = performance.now();
+      this.lastUpdateTimestamp = this.startTimestamp;
+
+      // --- SHOOTING PARAMETERS ---
+      this.shootingCooldown = 500;
+      this.lastShootingTimestamp = 0;
+
+      // Hide controls initially
+      if (this.controlsElement) {
+        this.controlsElement.style.display = "none";
+      }
+
+      // --- INITIALIZATION ---
+      this.initializeEventListeners();
+      this.applyRocketTransform();
+      requestAnimationFrame(this.updateRocket.bind(this));
+      this.startIntroAnimation();
+
+      // --- WINDOW RESIZE HANDLER ---
+      window.addEventListener("resize", () => {
+        // Recalculate positions based on new window size.
+        this.recalculateRocketPositions();
+        // Always reset rocket to the new target (center) position.
+        this.currentPosX = this.targetX;
+        this.currentPosY = this.targetY;
+        this.applyRocketTransform();
+      });
+
+      // --- RESET HANDLER ---
+      window.addEventListener("rocketReset", async () => {
+        this.recalculateRocketPositions();
+        await this.animateToPosition(this.targetX, this.targetY, 500);
+        this.currentRotationAngle = 90;
+        this.applyRocketTransform();
+        if (this.controlsElement) {
+          this.controlsElement.style.display = "block";
+          this.controlsElement.innerHTML = "Use arrow keys to move the rocket.";
+          this.fadeInElement(this.controlsElement, 0.5);
+        }
+        this.sessionStarted = false;
+      });
+    }
+
+    // --- DYNAMIC POSITION CALCULATION ---
+    // Computes initial and target positions based on the center text's left edge.
+    recalculateRocketPositions() {
+      const centerTextElement = document.querySelector(".text-center");
+      const leftEdgeOfCenterText = centerTextElement
+        ? centerTextElement.getBoundingClientRect().left
+        : window.innerWidth / 2;
+      // Target X is halfway between the left edge and the center text's left edge.
+      this.targetX = leftEdgeOfCenterText / 2;
+      // Target Y is the vertical center.
+      this.targetY = window.innerHeight / 2;
+      // Initial X is off-screen to the left by 500px relative to target.
+      this.initialX = this.targetX - 500;
+      // Initial Y matches target Y.
+      this.initialY = this.targetY;
+    }
+
+    // --- INTRO ANIMATION ---
+    // Waits a short delay then animates the rocket from initial to target position.
+    async startIntroAnimation() {
+      await new Promise((resolve) =>
+        setTimeout(resolve, this.introDelayDuration)
+      );
+      await this.animateToPosition(
+        this.targetX,
+        this.targetY,
+        this.introDuration
+      );
+      this.introCompleted = true;
+      this.readyForUserInput = true;
+      window.inputAllowed = true;
+      if (this.controlsElement) {
+        this.controlsElement.style.display = "block";
+        this.controlsElement.innerHTML = "Use arrow keys to move the rocket.";
+        this.fadeInElement(this.controlsElement, 0.5);
+      }
+      // Show the Draw Constellations button after the intro.
+      const drawConstellationsButton = document.getElementById(
+        "drawConstellationsButton"
+      );
+      if (drawConstellationsButton) {
+        drawConstellationsButton.style.display = "block";
+      }
+    }
+
+    // --- ANIMATION METHOD ---
+    // Animates the rocket from current position to a destination over a set duration.
+    async animateToPosition(destinationX, destinationY, durationMillis) {
+      if (this.currentAnimationFrameId) {
+        cancelAnimationFrame(this.currentAnimationFrameId);
+        if (this.cancelCurrentAnimation) this.cancelCurrentAnimation();
+      }
+      return new Promise((resolve) => {
+        let animationCanceled = false;
+        this.cancelCurrentAnimation = () => {
+          animationCanceled = true;
+          resolve();
+        };
+        const startX = this.currentPosX;
+        const startY = this.currentPosY;
+        const animationStartTime = performance.now();
+        const animateStep = (currentTime) => {
+          if (animationCanceled) return;
+          let progress = (currentTime - animationStartTime) / durationMillis;
+          progress = progress > 1 ? 1 : progress;
+          this.currentPosX = startX + progress * (destinationX - startX);
+          this.currentPosY = startY + progress * (destinationY - startY);
+          this.currentRotationAngle =
+            Math.atan2(
+              destinationY - this.currentPosY,
+              destinationX - this.currentPosX
+            ) *
+              (180 / Math.PI) +
+            90;
+          this.applyRocketTransform();
+          if (progress < 1) {
+            this.currentAnimationFrameId = requestAnimationFrame(animateStep);
+          } else {
+            this.currentAnimationFrameId = null;
+            resolve();
+          }
+        };
+        this.currentAnimationFrameId = requestAnimationFrame(animateStep);
+      });
+    }
+
+    // --- APPLY TRANSFORM ---
+    // Applies the current position and rotation to the rocket element.
+    applyRocketTransform() {
+      this.rocketElement.style.left = this.currentPosX + "px";
+      this.rocketElement.style.top = this.currentPosY + "px";
+      this.rocketElement.style.transform = `translate(-50%, -50%) rotate(${this.currentRotationAngle}deg)`;
+    }
+
+    // --- MAIN UPDATE LOOP ---
+    // Updates rocket movement, applies bobbing when idle, and processes user input.
+    updateRocket(currentTime) {
+      this.lastUpdateTimestamp = currentTime;
+      let adjustedPosY = this.currentPosY;
+      if (this.introCompleted && this.readyForUserInput) {
+        if (window.starfieldPaused && !this.flyingOutState) {
+          this.flyingOutState = true;
+          this.flyOutAnimation();
+        } else if (!window.starfieldPaused && this.flyingOutState) {
+          this.flyingOutState = false;
+          this.flyInAnimation();
+        }
+        if (!this.flyingOutState) {
+          let deltaX = 0,
+            deltaY = 0;
+          if (this.directionKeys.up) deltaY = -1;
+          if (this.directionKeys.down) deltaY = 1;
+          if (this.directionKeys.left) deltaX = -1;
+          if (this.directionKeys.right) deltaX = 1;
+          if (deltaX !== 0 || deltaY !== 0) {
+            const length = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+            deltaX /= length;
+            deltaY /= length;
+            this.currentPosX += deltaX * this.movementSpeed;
+            this.currentPosY += deltaY * this.movementSpeed;
+            this.currentRotationAngle =
+              Math.atan2(deltaY, deltaX) * (180 / Math.PI) + 90;
+            if (!this.sessionStarted) {
+              this.sessionStarted = true;
+              window.dispatchEvent(new CustomEvent("rocketGameSessionStart"));
+            }
+          } else {
+            const phase =
+              (currentTime % this.bobbingPeriod) / this.bobbingPeriod;
+            const bobbingOffset =
+              this.bobbingAmplitude * Math.sin(phase * 2 * Math.PI);
+            adjustedPosY = this.currentPosY + bobbingOffset;
+          }
+        }
+      }
+      if (this.sessionStarted) {
+        // Constrain rocket within window boundaries.
+        const halfWidth = 15,
+          halfHeight = 15;
+        this.currentPosX = Math.max(
+          halfWidth,
+          Math.min(window.innerWidth - halfWidth, this.currentPosX)
+        );
+        this.currentPosY = Math.max(
+          halfHeight,
+          Math.min(window.innerHeight - halfHeight, this.currentPosY)
+        );
+      }
+      this.applyRocketTransform();
+      requestAnimationFrame(this.updateRocket.bind(this));
+    }
+
+    // --- FLY OUT/IN ANIMATIONS ---
+    // Animates the rocket flying out (off-screen) and back in.
+    flyOutAnimation() {
+      this.animateToPosition(this.initialX, this.initialY, 2000);
+    }
+
+    flyInAnimation() {
+      this.animateToPosition(this.targetX, this.targetY, 1000).then(() => {
+        if (this.controlsElement) {
+          this.controlsElement.style.display = "block";
+          this.controlsElement.innerHTML = "Use arrow keys to move the rocket.";
+          this.fadeInElement(this.controlsElement, 0.5);
+        }
+      });
+    }
+
+    // --- FADE METHOD ---
+    // Fades in a given DOM element over the specified duration.
+    fadeInElement(domElement, durationSeconds) {
+      domElement.style.transition = `opacity ${durationSeconds}s`;
+      domElement.style.opacity = "1";
+    }
+
+    // --- EVENT LISTENERS ---
+    // Sets up keyboard events for rocket movement and shooting.
+    initializeEventListeners() {
+      document.addEventListener("keydown", (event) => {
+        if (!this.readyForUserInput) return;
+        switch (event.code) {
+          case "ArrowUp":
+            this.directionKeys.up = true;
+            break;
+          case "ArrowDown":
+            this.directionKeys.down = true;
+            break;
+          case "ArrowLeft":
+            this.directionKeys.left = true;
+            break;
+          case "ArrowRight":
+            this.directionKeys.right = true;
+            break;
+          case "Space":
+            if (!this.sessionStarted) return;
+            this.handleShooting();
+            break;
+        }
+      });
+      document.addEventListener("keyup", (event) => {
+        if (!this.readyForUserInput) return;
+        switch (event.key) {
+          case "ArrowUp":
+            this.directionKeys.up = false;
+            break;
+          case "ArrowDown":
+            this.directionKeys.down = false;
+            break;
+          case "ArrowLeft":
+            this.directionKeys.left = false;
+            break;
+          case "ArrowRight":
+            this.directionKeys.right = false;
+            break;
+        }
+      });
+    }
+
+    // --- SHOOTING HANDLER ---
+    // Creates and animates a bullet when the rocket fires.
+    handleShooting() {
+      const now = performance.now();
+      if (now - this.lastShootingTimestamp < this.shootingCooldown) return;
+      this.lastShootingTimestamp = now;
+      const bulletElement = document.createElement("div");
+      bulletElement.classList.add("bullet");
+      bulletElement.style.position = "absolute";
+      bulletElement.style.width = "5px";
+      bulletElement.style.height = "5px";
+      bulletElement.style.backgroundColor = "#ff0000";
+      bulletElement.style.borderRadius = "50%";
+      document.body.appendChild(bulletElement);
+      const bulletOffset = 10;
+      const angleInRadians = (this.currentRotationAngle * Math.PI) / 180;
+      let bulletPosX =
+        this.currentPosX + Math.sin(angleInRadians) * bulletOffset;
+      let bulletPosY =
+        this.currentPosY - Math.cos(angleInRadians) * bulletOffset;
+      bulletElement.style.left = bulletPosX + "px";
+      bulletElement.style.top = bulletPosY + "px";
+      const bulletSpeed = 10;
+      const bulletVelocityX = Math.sin(angleInRadians) * bulletSpeed;
+      const bulletVelocityY = -Math.cos(angleInRadians) * bulletSpeed;
+      let bulletAnimationFrameId;
+      const updateBullet = () => {
+        bulletPosX += bulletVelocityX;
+        bulletPosY += bulletVelocityY;
+        bulletElement.style.left = bulletPosX + "px";
+        bulletElement.style.top = bulletPosY + "px";
+        if (
+          bulletPosX <= 10 ||
+          bulletPosX >= window.innerWidth - 10 ||
+          bulletPosY <= 10 ||
+          bulletPosY >= window.innerHeight - 10
+        ) {
+          bulletElement.remove();
+          cancelAnimationFrame(bulletAnimationFrameId);
+          return;
+        }
+        bulletAnimationFrameId = requestAnimationFrame(updateBullet);
+      };
+      bulletAnimationFrameId = requestAnimationFrame(updateBullet);
+    }
+  }
+
+  // INSTANTIATE THE ROCKET CONTROLLER TO START THE ROCKET FUNCTIONALITY
+  const rocketControllerInstance = new RocketController();
+</script>

@@ -1,8 +1,10 @@
 ---
+// index.astro
 import Layout from "../layouts/Layout.astro";
 import Starfield from "../components/Starfield.astro";
 import DrawConstellations from "../components/games/DrawConstellations.astro";
 import Rocket from "../components/Rocket.astro";
+import RocketGame from "../components/games/RocketGame.astro";
 import Shake from "../components/effects/Shake.astro";
 import Flicker from "../components/effects/Flicker.astro";
 ---
@@ -12,7 +14,11 @@ import Flicker from "../components/effects/Flicker.astro";
 
 <Layout>
   <Starfield />
+  <!-- Global controls div in the bottom right -->
+  <div id="controls" class="console-text mb-4 bobbing"></div>
+
   <Rocket />
+  <RocketGame />
 
   <!-- Social Links Container fixed to top left in a row -->
   <div class="fixed top-0 left-0 m-4 flex flex-row space-x-4">
