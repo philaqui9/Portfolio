@@ -5,6 +5,7 @@
 <style>
   /* Styling for the rocket element */
   #rocket {
+    display: none;
     position: absolute;
     z-index: 10;
     left: 0;
@@ -60,7 +61,7 @@
 
       // --- STATE VARIABLES ---
       this.sessionStarted = false;
-      window.introCompleted = false;
+      this.introCompleted = false;
       this.readyForUserInput = false;
       this.flyingOutState = false;
 
@@ -148,7 +149,7 @@
           this.rocketElement.style.display = "block";
         }
         // Only show arrow controls if the intro has completed.
-        if (this.controlsElement && window.introCompleted) {
+        if (this.controlsElement && this.introCompleted) {
           this.controlsElement.style.display = "block";
         }
       }
@@ -182,7 +183,7 @@
         this.targetY,
         this.introDuration
       );
-      window.introCompleted = true;
+      this.introCompleted = true;
       this.readyForUserInput = true;
       window.inputAllowed = true;
       if (this.controlsElement) {

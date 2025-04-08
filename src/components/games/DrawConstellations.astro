@@ -34,232 +34,224 @@
 
 <script type="module">
   // --- RESPONSIVE VISIBILITY CHECK ---
-  function updateDrawButtonVisibility() {
-    const drawButton = document.getElementById("drawConstellationsButton");
-    // If the rocket and arrow text aren't showing (i.e. on small screens), hide the draw button.
-    if (window.innerWidth < 768 || !window.rocketIntroCompleted) {
-      drawButton.style.display = "none";
-    } else {
-      drawButton.style.display = "block";
-    }
+  if (window.innerWidth < 768) {
+    console.log("Draw Constellations disabled on mobile devices");
+    const btn = document.getElementById("toggleStarfield");
+    if (btn) btn.style.display = "none";
+  } else {
+    // Wait 5 seconds before showing the draw button.
+    setTimeout(() => {
+      const btn = document.getElementById("toggleStarfield");
+      if (btn) {
+        btn.style.display = "block";
+      }
+    }, 5000);
   }
 
-  // --- INITIAL VISIBILITY CHECK ---
-  updateDrawButtonVisibility();
+  // --- DOM ELEMENT REFERENCES ---
+  const drawButton = document.getElementById("drawConstellationsButton");
+  const controlsContainer = document.getElementById("controls");
 
-  // --- UPDATE VISIBILITY ON RESIZE ---
-  window.addEventListener("resize", updateDrawButtonVisibility);
+  // --- DRAWING MODE INSTRUCTIONS ---
+  const drawingInstructionsText =
+    "Click &amp; drag on a star to create a line.<br>" +
+    "Drag the line to another star to connect them.<br>" +
+    "Click on a line to remove it.";
 
-  // --- DRAWING MODE LOGIC ---
-  if (window.innerWidth >= 768) {
-    // --- DOM ELEMENT REFERENCES ---
-    const drawButton = document.getElementById("drawConstellationsButton");
-    const controlsContainer = document.getElementById("controls");
+  // --- STATE VARIABLES ---
+  let drawingModeActive = false;
+  let activeDrawingSession = null;
+  let controlTextObserver = null;
 
-    // --- DRAWING MODE INSTRUCTIONS ---
-    const drawingInstructionsText =
-      "Click &amp; drag on a star to create a line.<br>" +
-      "Drag the line to another star to connect them.<br>" +
-      "Click on a line to remove it.";
-
-    // --- STATE VARIABLES ---
-    let drawingModeActive = false;
-    let activeDrawingSession = null;
-    let controlTextObserver = null;
-
-    // --- METHODS ---
-    function lockControlInstructions() {
-      if (controlsContainer) {
-        controlsContainer.innerHTML = drawingInstructionsText;
-        controlTextObserver = new MutationObserver(() => {
-          if (controlsContainer.innerHTML.trim() !== drawingInstructionsText) {
-            controlsContainer.innerHTML = drawingInstructionsText;
-          }
-        });
-        controlTextObserver.observe(controlsContainer, {
-          childList: true,
-          subtree: true,
-        });
-      }
-    }
-    function unlockControlInstructions() {
-      if (controlTextObserver) {
-        controlTextObserver.disconnect();
-        controlTextObserver = null;
-      }
-    }
-    function clearControlInstructions() {
-      if (controlsContainer) {
-        controlsContainer.innerHTML = "";
-      }
-    }
-    function fadeUIElements(newOpacity, durationSeconds) {
-      const uiElements = [
-        document.querySelector(".text-center"),
-        document.getElementById("github-container"),
-        document.getElementById("linkedin-container"),
-        document.getElementById("resume-container"),
-      ];
-      uiElements.forEach((element) => {
-        if (element) {
-          element.style.transition = `opacity ${durationSeconds}s`;
-          element.style.opacity = newOpacity;
+  // --- METHODS ---
+  function lockControlInstructions() {
+    if (controlsContainer) {
+      controlsContainer.innerHTML = drawingInstructionsText;
+      controlTextObserver = new MutationObserver(() => {
+        if (controlsContainer.innerHTML.trim() !== drawingInstructionsText) {
+          controlsContainer.innerHTML = drawingInstructionsText;
         }
       });
+      controlTextObserver.observe(controlsContainer, {
+        childList: true,
+        subtree: true,
+      });
     }
-
-    // --- EVENT HANDLERS ---
-    drawButton.addEventListener("click", () => {
-      if (!drawingModeActive && activeDrawingSession === null) {
-        activeDrawingSession = { startTime: Date.now() };
-        window.stopActiveLoop();
-        window.startStaticLoop();
-        drawButton.textContent = "Stop drawing";
-        window.starfieldPaused = true;
-        fadeUIElements("0", 0.2);
-        lockControlInstructions();
-        drawingModeActive = true;
-      } else if (drawingModeActive) {
-        activeDrawingSession = null;
-        window.stopStaticLoop();
-        window.startActiveLoop();
-        drawButton.textContent = "Draw Constellations";
-        window.starfieldPaused = false;
-        fadeUIElements("1", 0.5);
-        unlockControlInstructions();
-        clearControlInstructions();
-        drawingModeActive = false;
+  }
+  function unlockControlInstructions() {
+    if (controlTextObserver) {
+      controlTextObserver.disconnect();
+      controlTextObserver = null;
+    }
+  }
+  function clearControlInstructions() {
+    if (controlsContainer) {
+      controlsContainer.innerHTML = "";
+    }
+  }
+  function fadeUIElements(newOpacity, durationSeconds) {
+    const uiElements = [
+      document.querySelector(".text-center"),
+      document.getElementById("github-container"),
+      document.getElementById("linkedin-container"),
+      document.getElementById("resume-container"),
+    ];
+    uiElements.forEach((element) => {
+      if (element) {
+        element.style.transition = `opacity ${durationSeconds}s`;
+        element.style.opacity = newOpacity;
       }
     });
+  }
 
-    window.addEventListener("mousemove", (mouseEvent) => {
-      mouseEvent.preventDefault();
-      if (!window.starfieldPaused) return;
-      const starfieldCanvas = document.getElementById("starfield");
-      if (!starfieldCanvas) return;
-      const canvasRect = starfieldCanvas.getBoundingClientRect();
-      window.starfieldState.currentHover = {
-        x: mouseEvent.clientX - canvasRect.left,
-        y: mouseEvent.clientY - canvasRect.top,
+  // --- EVENT HANDLERS ---
+  drawButton.addEventListener("click", () => {
+    if (!drawingModeActive && activeDrawingSession === null) {
+      activeDrawingSession = { startTime: Date.now() };
+      window.stopActiveLoop();
+      window.startStaticLoop();
+      drawButton.textContent = "Stop drawing";
+      window.starfieldPaused = true;
+      fadeUIElements("0", 0.2);
+      lockControlInstructions();
+      drawingModeActive = true;
+    } else if (drawingModeActive) {
+      activeDrawingSession = null;
+      window.stopStaticLoop();
+      window.startActiveLoop();
+      drawButton.textContent = "Draw Constellations";
+      window.starfieldPaused = false;
+      fadeUIElements("1", 0.5);
+      unlockControlInstructions();
+      clearControlInstructions();
+      drawingModeActive = false;
+    }
+  });
+
+  window.addEventListener("mousemove", (mouseEvent) => {
+    mouseEvent.preventDefault();
+    if (!window.starfieldPaused) return;
+    const starfieldCanvas = document.getElementById("starfield");
+    if (!starfieldCanvas) return;
+    const canvasRect = starfieldCanvas.getBoundingClientRect();
+    window.starfieldState.currentHover = {
+      x: mouseEvent.clientX - canvasRect.left,
+      y: mouseEvent.clientY - canvasRect.top,
+    };
+    if (window.starfieldState.lineActive) {
+      window.starfieldState.lineEnd = {
+        ...window.starfieldState.currentHover,
       };
-      if (window.starfieldState.lineActive) {
-        window.starfieldState.lineEnd = {
-          ...window.starfieldState.currentHover,
-        };
-      }
-    });
+    }
+  });
 
-    window.addEventListener("mouseout", () => {
-      if (window.starfieldPaused) window.starfieldState.currentHover = null;
-    });
+  window.addEventListener("mouseout", () => {
+    if (window.starfieldPaused) window.starfieldState.currentHover = null;
+  });
 
-    window.addEventListener("mousedown", (mouseEvent) => {
-      mouseEvent.preventDefault();
-      if (!window.starfieldPaused) return;
-      const starfieldCanvas = document.getElementById("starfield");
-      if (!starfieldCanvas) return;
-      const canvasRect = starfieldCanvas.getBoundingClientRect();
-      const clickX = mouseEvent.clientX - canvasRect.left;
-      const clickY = mouseEvent.clientY - canvasRect.top;
-      const starsArray = window.starfieldState.stars;
-      let starWasClicked = false;
-      if (starsArray) {
-        for (let index = 0; index < starsArray.length; index++) {
-          const currentStar = starsArray[index];
-          if (
-            (currentStar.x - clickX) ** 2 + (currentStar.y - clickY) ** 2 <
-            400
-          ) {
-            starWasClicked = true;
-            window.starfieldState.lineActive = true;
-            window.starfieldState.lineStart = {
-              x: currentStar.x,
-              y: currentStar.y,
-            };
-            window.starfieldState.lineEnd = { x: clickX, y: clickY };
-            window.starfieldState.lineStartStarIndex = index;
-            break;
-          }
-        }
-      }
-      if (!starWasClicked) {
-        const clickTolerance = 10;
-        const linesArray = window.starfieldState.permanentLines || [];
-        for (let index = 0; index < linesArray.length; index++) {
-          const currentLine = linesArray[index];
-          const startStar = window.starfieldState.stars[currentLine.startIndex];
-          const endStar = window.starfieldState.stars[currentLine.endIndex];
-          if (
-            pointToSegmentDistance(
-              { x: clickX, y: clickY },
-              startStar,
-              endStar
-            ) <= clickTolerance
-          ) {
-            window.starfieldState.permanentLines.splice(index, 1);
-            break;
-          }
-        }
-      }
-    });
-
-    window.addEventListener("mouseup", (mouseEvent) => {
-      mouseEvent.preventDefault();
-      if (!window.starfieldPaused || !window.starfieldState.lineActive) return;
-      const starfieldCanvas = document.getElementById("starfield");
-      if (!starfieldCanvas) return;
-      const canvasRect = starfieldCanvas.getBoundingClientRect();
-      const releaseX = mouseEvent.clientX - canvasRect.left;
-      const releaseY = mouseEvent.clientY - canvasRect.top;
-      let targetStarIndex = null;
-      const starsArray = window.starfieldState.stars;
+  window.addEventListener("mousedown", (mouseEvent) => {
+    mouseEvent.preventDefault();
+    if (!window.starfieldPaused) return;
+    const starfieldCanvas = document.getElementById("starfield");
+    if (!starfieldCanvas) return;
+    const canvasRect = starfieldCanvas.getBoundingClientRect();
+    const clickX = mouseEvent.clientX - canvasRect.left;
+    const clickY = mouseEvent.clientY - canvasRect.top;
+    const starsArray = window.starfieldState.stars;
+    let starWasClicked = false;
+    if (starsArray) {
       for (let index = 0; index < starsArray.length; index++) {
-        if (index === window.starfieldState.lineStartStarIndex) continue;
+        const currentStar = starsArray[index];
         if (
-          (starsArray[index].x - releaseX) ** 2 +
-            (starsArray[index].y - releaseY) ** 2 <
+          (currentStar.x - clickX) ** 2 + (currentStar.y - clickY) ** 2 <
           400
         ) {
-          targetStarIndex = index;
+          starWasClicked = true;
+          window.starfieldState.lineActive = true;
+          window.starfieldState.lineStart = {
+            x: currentStar.x,
+            y: currentStar.y,
+          };
+          window.starfieldState.lineEnd = { x: clickX, y: clickY };
+          window.starfieldState.lineStartStarIndex = index;
           break;
         }
       }
-      if (targetStarIndex !== null) {
-        if (!window.starfieldState.permanentLines) {
-          window.starfieldState.permanentLines = [];
-        }
-        window.starfieldState.permanentLines.push({
-          startIndex: window.starfieldState.lineStartStarIndex,
-          endIndex: targetStarIndex,
-        });
-      }
-      window.starfieldState.lineActive = false;
-      window.starfieldState.lineStartStarIndex = null;
-    });
-
-    function pointToSegmentDistance(point, segmentStart, segmentEnd) {
-      const segmentLengthSquared =
-        (segmentEnd.x - segmentStart.x) ** 2 +
-        (segmentEnd.y - segmentStart.y) ** 2;
-      if (segmentLengthSquared === 0)
-        return Math.hypot(point.x - segmentStart.x, point.y - segmentStart.y);
-      let projectionFactor =
-        ((point.x - segmentStart.x) * (segmentEnd.x - segmentStart.x) +
-          (point.y - segmentStart.y) * (segmentEnd.y - segmentStart.y)) /
-        segmentLengthSquared;
-      projectionFactor = Math.max(0, Math.min(1, projectionFactor));
-      const projectionPoint = {
-        x: segmentStart.x + projectionFactor * (segmentEnd.x - segmentStart.x),
-        y: segmentStart.y + projectionFactor * (segmentEnd.y - segmentStart.y),
-      };
-      return Math.hypot(
-        point.x - projectionPoint.x,
-        point.y - projectionPoint.y
-      );
     }
+    if (!starWasClicked) {
+      const clickTolerance = 10;
+      const linesArray = window.starfieldState.permanentLines || [];
+      for (let index = 0; index < linesArray.length; index++) {
+        const currentLine = linesArray[index];
+        const startStar = window.starfieldState.stars[currentLine.startIndex];
+        const endStar = window.starfieldState.stars[currentLine.endIndex];
+        if (
+          pointToSegmentDistance(
+            { x: clickX, y: clickY },
+            startStar,
+            endStar
+          ) <= clickTolerance
+        ) {
+          window.starfieldState.permanentLines.splice(index, 1);
+          break;
+        }
+      }
+    }
+  });
 
-    ["keydown", "keypress", "keyup"].forEach((type) =>
-      window.addEventListener(type, (e) => e.preventDefault(), true)
-    );
+  window.addEventListener("mouseup", (mouseEvent) => {
+    mouseEvent.preventDefault();
+    if (!window.starfieldPaused || !window.starfieldState.lineActive) return;
+    const starfieldCanvas = document.getElementById("starfield");
+    if (!starfieldCanvas) return;
+    const canvasRect = starfieldCanvas.getBoundingClientRect();
+    const releaseX = mouseEvent.clientX - canvasRect.left;
+    const releaseY = mouseEvent.clientY - canvasRect.top;
+    let targetStarIndex = null;
+    const starsArray = window.starfieldState.stars;
+    for (let index = 0; index < starsArray.length; index++) {
+      if (index === window.starfieldState.lineStartStarIndex) continue;
+      if (
+        (starsArray[index].x - releaseX) ** 2 +
+          (starsArray[index].y - releaseY) ** 2 <
+        400
+      ) {
+        targetStarIndex = index;
+        break;
+      }
+    }
+    if (targetStarIndex !== null) {
+      if (!window.starfieldState.permanentLines) {
+        window.starfieldState.permanentLines = [];
+      }
+      window.starfieldState.permanentLines.push({
+        startIndex: window.starfieldState.lineStartStarIndex,
+        endIndex: targetStarIndex,
+      });
+    }
+    window.starfieldState.lineActive = false;
+    window.starfieldState.lineStartStarIndex = null;
+  });
+
+  function pointToSegmentDistance(point, segmentStart, segmentEnd) {
+    const segmentLengthSquared =
+      (segmentEnd.x - segmentStart.x) ** 2 +
+      (segmentEnd.y - segmentStart.y) ** 2;
+    if (segmentLengthSquared === 0)
+      return Math.hypot(point.x - segmentStart.x, point.y - segmentStart.y);
+    let projectionFactor =
+      ((point.x - segmentStart.x) * (segmentEnd.x - segmentStart.x) +
+        (point.y - segmentStart.y) * (segmentEnd.y - segmentStart.y)) /
+      segmentLengthSquared;
+    projectionFactor = Math.max(0, Math.min(1, projectionFactor));
+    const projectionPoint = {
+      x: segmentStart.x + projectionFactor * (segmentEnd.x - segmentStart.x),
+      y: segmentStart.y + projectionFactor * (segmentEnd.y - segmentStart.y),
+    };
+    return Math.hypot(point.x - projectionPoint.x, point.y - projectionPoint.y);
   }
+
+  ["keydown", "keypress", "keyup"].forEach((type) =>
+    window.addEventListener(type, (e) => e.preventDefault(), true)
+  );
 </script>
